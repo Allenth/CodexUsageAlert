@@ -9,13 +9,13 @@ struct CodexUsageAlertApp: App {
 
     var body: some Scene {
         WindowGroup("Codex 用量预警", id: "dashboard") {
-            UsagePopover(monitor: monitor)
+            UsagePopover(monitor: monitor, presentsSettingsInline: false)
         }
         .defaultSize(width: 380, height: 750)
         .windowResizability(.contentSize)
 
         MenuBarExtra {
-            UsagePopover(monitor: monitor)
+            UsagePopover(monitor: monitor, presentsSettingsInline: true)
         } label: {
             HStack(spacing: 4) {
                 Image(nsImage: MenuBarIcon.image)
@@ -34,26 +34,57 @@ private enum MenuBarIcon {
             NSGraphicsContext.saveGraphicsState()
             defer { NSGraphicsContext.restoreGraphicsState() }
 
-            NSColor.black.setStroke()
-            let crescent = NSBezierPath()
-            crescent.lineWidth = 2.2
-            crescent.lineCapStyle = .round
-            crescent.appendArc(
-                withCenter: NSPoint(x: 7.7, y: 7.7),
-                radius: 5.4,
-                startAngle: 42,
-                endAngle: 318,
-                clockwise: false
-            )
-            crescent.stroke()
+            if let context = NSGraphicsContext.current?.cgContext,
+               let gradient = CGGradient(
+                   colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                   colors: [
+                       NSColor(
+                           calibratedRed: 0.12,
+                           green: 0.92,
+                           blue: 0.90,
+                           alpha: 1
+                       ).cgColor,
+                       NSColor(
+                           calibratedRed: 0.08,
+                           green: 0.48,
+                           blue: 1.00,
+                           alpha: 1
+                       ).cgColor,
+                   ] as CFArray,
+                   locations: [0, 1]
+               ) {
+                context.setLineWidth(2.2)
+                context.setLineCap(.round)
+                context.addArc(
+                    center: CGPoint(x: 7.7, y: 7.7),
+                    radius: 5.4,
+                    startAngle: 42 * .pi / 180,
+                    endAngle: 318 * .pi / 180,
+                    clockwise: false
+                )
+                context.replacePathWithStrokedPath()
+                context.clip()
+                context.drawLinearGradient(
+                    gradient,
+                    start: CGPoint(x: 2, y: 3),
+                    end: CGPoint(x: 13, y: 13),
+                    options: []
+                )
+            }
 
-            NSColor.black.setFill()
+            NSColor(
+                calibratedRed: 1.00,
+                green: 0.66,
+                blue: 0.12,
+                alpha: 1
+            ).setFill()
             NSBezierPath(
                 ovalIn: NSRect(x: 11.8, y: 11.8, width: 2.2, height: 2.2)
-            ).fill()
+            )
+            .fill()
             return true
         }
-        image.isTemplate = true
+        image.isTemplate = false
         return image
     }()
 }
@@ -104,6 +135,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
 private struct UsagePopover: View {
     @ObservedObject var monitor: UsageMonitor
+    let presentsSettingsInline: Bool
     @State private var showingSettings = false
 
     var body: some View {
@@ -207,15 +239,42 @@ private struct UsagePopover: View {
             .foregroundStyle(.white)
             .frame(width: 344)
             .padding(18)
+
+            if presentsSettingsInline && showingSettings {
+                Color.black.opacity(0.48)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { }
+
+                RefreshSettingsView(monitor: monitor) {
+                    showingSettings = false
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
+                .padding(.horizontal, 20)
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
         }
         .frame(width: 380)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
-        .sheet(isPresented: $showingSettings) {
+        .sheet(isPresented: sheetIsPresented) {
             RefreshSettingsView(monitor: monitor) {
                 showingSettings = false
             }
         }
+        .animation(.easeOut(duration: 0.16), value: showingSettings)
+    }
+
+    private var sheetIsPresented: Binding<Bool> {
+        Binding(
+            get: { showingSettings && !presentsSettingsInline },
+            set: { showingSettings = $0 }
+        )
     }
 
     private var header: some View {

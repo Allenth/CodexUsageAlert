@@ -1467,7 +1467,7 @@ private struct CodexAccessCard: View {
 
                 Button(
                     monitor.codexHomeSelectionName == nil
-                        ? L("2. 授权登录资料", "2. Authorize sign-in data")
+                        ? L("2. 授权 .codex", "2. Authorize .codex")
                         : L("✓ 登录资料", "✓ Sign-in data")
                 ) {
                     monitor.chooseCodexHomeLocation()

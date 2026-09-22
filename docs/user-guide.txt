@@ -27,6 +27,8 @@ Codex Usage Alert / Codex 用量预警
    语言默认跟随系统；中文系统显示简体中文，其他系统语言显示英文，也可以手动切换。
 6. 建议开启“登录时自动启动”，以便持续监控用量。
 
+沙盒版首次授权登录资料时，会自动在文件选择器中显示隐藏的“.codex”文件夹。选中“.codex”后点击“授权读取”即可，不需要使用快捷键或手动输入路径。
+
 四、预警规则
 
 - 默认按今日增加 5%、10%、15%、20% 分级提醒。
@@ -67,6 +69,8 @@ English Quick Start
 4. The main gauge shows today's local increase against today's cap. The side metrics show today's remaining budget and the account usage-window totals.
 5. Use Refresh now to update data and Test alert to verify notifications.
 6. Open Preferences to choose System, Simplified Chinese, or English; set the refresh schedule; and choose Chinese or English token units.
+
+On first use in the sandbox build, the file picker automatically reveals the hidden .codex folder. Select .codex and click Allow Access; you do not need to type the path manually.
 
 The app defaults to the macOS language. Chinese systems use Simplified Chinese; all other system languages use English. Quota-window and token summary data come from Codex services through the local Codex App Server. Today's local increase and rollover budget depend on snapshots recorded on this Mac.
 

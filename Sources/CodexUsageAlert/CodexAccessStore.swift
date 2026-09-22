@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import UsageCore
 
@@ -147,14 +148,28 @@ final class CodexAccessStore {
     }
 
     func chooseCodexHomeGrant() throws -> CodexHomeGrant? {
+        let homeDirectory = Self.realUserHomeDirectory
+        let defaultCodexDirectory = homeDirectory.appendingPathComponent(
+            ".codex",
+            isDirectory: true
+        )
+        let hasDefaultCodexDirectory = FileManager.default.fileExists(
+            atPath: defaultCodexDirectory.path
+        )
+
         let panel = NSOpenPanel()
         panel.title = L("选择 Codex 登录资料文件夹", "Choose the Codex sign-in data folder")
         panel.message = L(
-            "请选择包含 auth.json 的 .codex 文件夹。可按 ⌘⇧G 输入 ~/.codex。",
-            "Choose the .codex folder containing auth.json. Press ⌘⇧G and enter ~/.codex."
+            hasDefaultCodexDirectory
+                ? "已为你显示隐藏的 .codex 文件夹。选中它，再点击“授权读取”。"
+                : "未找到默认的 .codex 文件夹。请先打开并登录 Codex，或选择包含 auth.json 的自定义目录。",
+            hasDefaultCodexDirectory
+                ? "The hidden .codex folder is visible below. Select it, then click Allow Access."
+                : "The default .codex folder was not found. Open and sign in to Codex first, or choose a custom folder containing auth.json."
         )
         panel.prompt = L("授权读取", "Allow Access")
-        panel.directoryURL = URL(fileURLWithPath: "/Users", isDirectory: true)
+        panel.directoryURL = homeDirectory
+        panel.showsHiddenFiles = true
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
@@ -184,6 +199,17 @@ final class CodexAccessStore {
 
     private func saveBookmark(for selectedURL: URL) throws {
         try saveBookmark(for: selectedURL, key: bookmarkKey)
+    }
+
+    private static var realUserHomeDirectory: URL {
+        guard let passwordRecord = getpwuid(getuid()),
+              let homePath = passwordRecord.pointee.pw_dir else {
+            return FileManager.default.homeDirectoryForCurrentUser
+        }
+        return URL(
+            fileURLWithPath: String(cString: homePath),
+            isDirectory: true
+        )
     }
 
     private func saveBookmark(for selectedURL: URL, key: String) throws {

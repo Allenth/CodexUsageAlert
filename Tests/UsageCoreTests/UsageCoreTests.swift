@@ -26,6 +26,33 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(DailyUsagePolicy.increase(baseline: 90, current: 2), 0)
     }
 
+    func testUnusedSustainableBudgetRollsIntoNextDay() {
+        let budget = RolloverBudgetCalculator.calculate(
+            windowDurationMins: 10_080,
+            yesterdayUsedPercent: 10,
+            yesterdayAvailablePercent: 14.285714,
+            sourceDay: "2026-09-21"
+        )
+
+        XCTAssertEqual(budget.baseDailyBudgetPercent, 14.285714, accuracy: 0.0001)
+        XCTAssertEqual(budget.carriedPercent, 4.285714, accuracy: 0.0001)
+        XCTAssertEqual(budget.todayAvailablePercent, 18.571428, accuracy: 0.0001)
+        XCTAssertTrue(budget.hasYesterdayData)
+    }
+
+    func testMissingYesterdayDataDoesNotCreateRollover() {
+        let budget = RolloverBudgetCalculator.calculate(
+            windowDurationMins: 10_080,
+            yesterdayUsedPercent: nil,
+            yesterdayAvailablePercent: nil,
+            sourceDay: nil
+        )
+
+        XCTAssertEqual(budget.carriedPercent, 0)
+        XCTAssertEqual(budget.todayAvailablePercent, 14.285714, accuracy: 0.0001)
+        XCTAssertFalse(budget.hasYesterdayData)
+    }
+
     func testCompactTokenFormatting() {
         XCTAssertEqual(TokenCountFormatter.compact(nil), "--")
         XCTAssertEqual(TokenCountFormatter.compact(999), "999")

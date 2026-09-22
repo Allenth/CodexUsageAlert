@@ -212,3 +212,63 @@ public enum DailyUsagePolicy {
         return .normal
     }
 }
+
+public struct DailyBudgetRollover: Equatable, Sendable {
+    public let baseDailyBudgetPercent: Double
+    public let yesterdayUsedPercent: Double?
+    public let yesterdayAvailablePercent: Double?
+    public let carriedPercent: Double
+    public let todayAvailablePercent: Double
+    public let sourceDay: String?
+
+    public var hasYesterdayData: Bool {
+        yesterdayUsedPercent != nil && yesterdayAvailablePercent != nil
+    }
+
+    public init(
+        baseDailyBudgetPercent: Double,
+        yesterdayUsedPercent: Double?,
+        yesterdayAvailablePercent: Double?,
+        carriedPercent: Double,
+        todayAvailablePercent: Double,
+        sourceDay: String?
+    ) {
+        self.baseDailyBudgetPercent = baseDailyBudgetPercent
+        self.yesterdayUsedPercent = yesterdayUsedPercent
+        self.yesterdayAvailablePercent = yesterdayAvailablePercent
+        self.carriedPercent = carriedPercent
+        self.todayAvailablePercent = todayAvailablePercent
+        self.sourceDay = sourceDay
+    }
+}
+
+public enum RolloverBudgetCalculator {
+    public static func sustainableDailyBudget(windowDurationMins: Double) -> Double {
+        guard windowDurationMins > 0 else { return 0 }
+        return min(100, 100 / (windowDurationMins / 1_440))
+    }
+
+    public static func calculate(
+        windowDurationMins: Double,
+        yesterdayUsedPercent: Double?,
+        yesterdayAvailablePercent: Double?,
+        sourceDay: String?
+    ) -> DailyBudgetRollover {
+        let base = sustainableDailyBudget(windowDurationMins: windowDurationMins)
+        let used = yesterdayUsedPercent.map { min(100, max(0, $0)) }
+        let previousAvailable = yesterdayAvailablePercent.map { min(100, max(0, $0)) }
+        let hasCompleteYesterday = used != nil && previousAvailable != nil
+        let carried = hasCompleteYesterday
+            ? max(0, (previousAvailable ?? base) - (used ?? 0))
+            : 0
+
+        return DailyBudgetRollover(
+            baseDailyBudgetPercent: base,
+            yesterdayUsedPercent: used,
+            yesterdayAvailablePercent: previousAvailable,
+            carriedPercent: carried,
+            todayAvailablePercent: min(100, base + carried),
+            sourceDay: hasCompleteYesterday ? sourceDay : nil
+        )
+    }
+}

@@ -189,7 +189,8 @@ private struct UsagePopover: View {
 
                 DailyBudgetCard(
                     dailyIncrease: monitor.dailyIncrease,
-                    statusColor: statusColor
+                    statusColor: statusColor,
+                    budget: monitor.rolloverBudget
                 )
 
                 if let tokenUsage = monitor.tokenUsage {
@@ -623,24 +624,56 @@ private struct MetricRow: View {
 private struct DailyBudgetCard: View {
     let dailyIncrease: Double
     let statusColor: Color
+    let budget: DailyBudgetRollover?
 
-    private let cap = 20.0
+    private var cap: Double {
+        max(1, budget?.todayAvailablePercent ?? 20)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("今日额度预算")
+                    Text("今日可用日均预算")
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("按自然日累计，最高 20 个百分点")
+                    Text(
+                        budget?.hasYesterdayData == true
+                            ? "昨天未用完的额度已结转"
+                            : "有完整昨日快照后自动结转"
+                    )
                         .font(.system(size: 9.5))
                         .foregroundStyle(.white.opacity(0.42))
                 }
                 Spacer()
-                Text("\(UsageMonitor.percent(dailyIncrease)) / 20%")
+                Text(
+                    "\(UsageMonitor.percent(dailyIncrease)) / \(UsageMonitor.percent(cap))%"
+                )
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(statusColor)
+            }
+
+            HStack(spacing: 0) {
+                BudgetInputValue(
+                    value: formatted(budget?.baseDailyBudgetPercent),
+                    label: "基础日均"
+                )
+                BudgetInputValue(
+                    value: formatted(budget?.yesterdayAvailablePercent),
+                    label: "昨日可用"
+                )
+                BudgetInputValue(
+                    value: formatted(budget?.yesterdayUsedPercent),
+                    label: "昨日已用"
+                )
+                BudgetInputValue(
+                    value: "+\(formatted(budget?.carriedPercent))",
+                    label: "结转"
+                )
+                BudgetInputValue(
+                    value: formatted(budget?.todayAvailablePercent),
+                    label: "今日可用"
+                )
             }
 
             GeometryReader { geometry in
@@ -662,38 +695,54 @@ private struct DailyBudgetCard: View {
                             height: 8
                         )
                         .shadow(color: statusColor.opacity(0.38), radius: 5)
-
-                    ForEach([5, 10, 15, 20], id: \.self) { threshold in
-                        Circle()
-                            .fill(dailyIncrease >= Double(threshold) ? statusColor : Color.white.opacity(0.22))
-                            .frame(width: 5, height: 5)
-                            .offset(
-                                x: min(
-                                    geometry.size.width - 5,
-                                    geometry.size.width * CGFloat(threshold) / CGFloat(cap) - 2.5
-                                )
-                            )
-                    }
                 }
                 .frame(height: 8)
             }
             .frame(height: 8)
 
-            HStack {
-                Text("5 注意")
-                Spacer()
-                Text("10 提醒")
-                Spacer()
-                Text("15 偏高")
-                Spacer()
-                Text("20 上限")
+            HStack(spacing: 5) {
+                Image(systemName: "externaldrive.badge.icloud")
+                Text(sourceDescription)
             }
-            .font(.system(size: 8.5, weight: .medium))
-            .foregroundStyle(.white.opacity(0.38))
+            .font(.system(size: 8.2))
+            .foregroundStyle(.white.opacity(0.34))
         }
         .padding(13)
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.white.opacity(0.065), lineWidth: 1))
+    }
+
+    private var sourceDescription: String {
+        let windowDays = UsageMonitor.percent(100 / max(budget?.baseDailyBudgetPercent ?? 100, 0.1))
+        if budget?.hasYesterdayData == true {
+            let sourceDay = budget?.sourceDay ?? "昨日"
+            return "日均：App Server 100÷\(windowDays)天 · \(sourceDay)：本机快照估算"
+        }
+        return "日均：App Server 100÷\(windowDays)天 · 昨日：暂无快照"
+    }
+
+    private func formatted(_ value: Double?) -> String {
+        guard let value else { return "--" }
+        return "\(UsageMonitor.percent(value))%"
+    }
+}
+
+private struct BudgetInputValue: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(label)
+                .font(.system(size: 7.8))
+                .foregroundStyle(.white.opacity(0.38))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

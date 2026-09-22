@@ -228,6 +228,11 @@ public enum DailyUsagePolicy {
     }
 }
 
+public enum RolloverUsageSource: String, Codable, Equatable, Sendable {
+    case localDailySnapshots
+    case windowBaselineEstimate
+}
+
 public struct DailyBudgetRollover: Equatable, Sendable {
     public let sustainableDailyBudgetPercent: Double
     public let baseDailyCapPercent: Double
@@ -235,6 +240,7 @@ public struct DailyBudgetRollover: Equatable, Sendable {
     public let carriedPercent: Double
     public let todayAvailablePercent: Double
     public let sourceDay: String?
+    public let yesterdayUsageSource: RolloverUsageSource?
 
     public var hasYesterdayData: Bool {
         yesterdayUsedPercent != nil
@@ -246,7 +252,8 @@ public struct DailyBudgetRollover: Equatable, Sendable {
         yesterdayUsedPercent: Double?,
         carriedPercent: Double,
         todayAvailablePercent: Double,
-        sourceDay: String?
+        sourceDay: String?,
+        yesterdayUsageSource: RolloverUsageSource?
     ) {
         self.sustainableDailyBudgetPercent = sustainableDailyBudgetPercent
         self.baseDailyCapPercent = baseDailyCapPercent
@@ -254,6 +261,7 @@ public struct DailyBudgetRollover: Equatable, Sendable {
         self.carriedPercent = carriedPercent
         self.todayAvailablePercent = todayAvailablePercent
         self.sourceDay = sourceDay
+        self.yesterdayUsageSource = yesterdayUsageSource
     }
 }
 
@@ -267,6 +275,7 @@ public enum RolloverBudgetCalculator {
         windowDurationMins: Double,
         yesterdayUsedPercent: Double?,
         sourceDay: String?,
+        yesterdayUsageSource: RolloverUsageSource? = nil,
         baseDailyCapPercent: Double = 20
     ) -> DailyBudgetRollover {
         let sustainable = sustainableDailyBudget(windowDurationMins: windowDurationMins)
@@ -280,7 +289,8 @@ public enum RolloverBudgetCalculator {
             yesterdayUsedPercent: used,
             carriedPercent: carried,
             todayAvailablePercent: min(100, baseCap + carried),
-            sourceDay: used == nil ? nil : sourceDay
+            sourceDay: used == nil ? nil : sourceDay,
+            yesterdayUsageSource: used == nil ? nil : yesterdayUsageSource
         )
     }
 }

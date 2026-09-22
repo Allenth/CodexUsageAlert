@@ -32,13 +32,15 @@ final class UsageCoreTests: XCTestCase {
         let budget = RolloverBudgetCalculator.calculate(
             windowDurationMins: 10_080,
             yesterdayUsedPercent: 7,
-            sourceDay: "2026-09-21"
+            sourceDay: "2026-09-21",
+            yesterdayUsageSource: .localDailySnapshots
         )
 
         XCTAssertEqual(budget.sustainableDailyBudgetPercent, 14.285714, accuracy: 0.0001)
         XCTAssertEqual(budget.baseDailyCapPercent, 20, accuracy: 0.0001)
         XCTAssertEqual(budget.carriedPercent, 7.285714, accuracy: 0.0001)
         XCTAssertEqual(budget.todayAvailablePercent, 27.285714, accuracy: 0.0001)
+        XCTAssertEqual(budget.yesterdayUsageSource, .localDailySnapshots)
         XCTAssertTrue(budget.hasYesterdayData)
     }
 
@@ -52,6 +54,19 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(budget.carriedPercent, 0)
         XCTAssertEqual(budget.todayAvailablePercent, 20, accuracy: 0.0001)
         XCTAssertFalse(budget.hasYesterdayData)
+    }
+
+    func testWindowBaselineCanProvideMarkedYesterdayEstimate() {
+        let budget = RolloverBudgetCalculator.calculate(
+            windowDurationMins: 10_080,
+            yesterdayUsedPercent: 13,
+            sourceDay: "2026-09-21",
+            yesterdayUsageSource: .windowBaselineEstimate
+        )
+
+        XCTAssertEqual(budget.carriedPercent, 1.285714, accuracy: 0.0001)
+        XCTAssertEqual(budget.todayAvailablePercent, 21.285714, accuracy: 0.0001)
+        XCTAssertEqual(budget.yesterdayUsageSource, .windowBaselineEstimate)
     }
 
     func testDailyCapThresholdIncludesRolloverCap() {

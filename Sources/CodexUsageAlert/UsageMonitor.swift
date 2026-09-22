@@ -262,7 +262,8 @@ final class UsageMonitor: ObservableObject {
         let budget = prepareRolloverBudget(
             for: today,
             snapshot: newSnapshot,
-            previousBaselineDay: savedDay
+            previousBaselineDay: savedDay,
+            previousBaselinePercent: savedBaseline
         )
         rolloverBudget = budget
 
@@ -300,15 +301,18 @@ final class UsageMonitor: ObservableObject {
     private func prepareRolloverBudget(
         for today: String,
         snapshot: UsageSnapshot,
-        previousBaselineDay: String?
+        previousBaselineDay: String?,
+        previousBaselinePercent: Double?
     ) -> DailyBudgetRollover {
-        let schemaVersion = 2
+        let schemaVersion = 3
         if defaults.string(forKey: "rolloverBudgetDay") == today,
            defaults.integer(forKey: "rolloverBudgetSchemaVersion") == schemaVersion {
             return RolloverBudgetCalculator.calculate(
                 windowDurationMins: snapshot.windowDurationMins,
                 yesterdayUsedPercent: defaults.object(forKey: "rolloverYesterdayUsed") as? Double,
-                sourceDay: defaults.string(forKey: "rolloverSourceDay")
+                sourceDay: defaults.string(forKey: "rolloverSourceDay"),
+                yesterdayUsageSource: defaults.string(forKey: "rolloverUsageSource")
+                    .flatMap { RolloverUsageSource(rawValue: $0) }
             )
         }
 
@@ -319,17 +323,37 @@ final class UsageMonitor: ObservableObject {
         )
         let previousDay = previousDate.map(Self.dayKey(for:))
         let usageDay = defaults.string(forKey: "dailyUsageRecordDay")
-        let hasYesterday = previousDay != nil
+        let hasRecordedYesterday = previousDay != nil
             && previousBaselineDay == previousDay
             && usageDay == previousDay
 
-        let yesterdayUsed = hasYesterday
-            ? defaults.object(forKey: "dailyUsageRecordPercent") as? Double
-            : nil
+        let windowStartedAt = snapshot.resetsAt.addingTimeInterval(
+            -snapshot.windowDurationMins * 60
+        )
+        let windowStartedYesterday = previousDay != nil
+            && Self.dayKey(for: windowStartedAt) == previousDay
+        let canUseWindowBaselineEstimate = previousDay != nil
+            && previousBaselineDay == today
+            && previousBaselinePercent != nil
+            && windowStartedYesterday
+
+        let yesterdayUsed: Double?
+        let usageSource: RolloverUsageSource?
+        if hasRecordedYesterday {
+            yesterdayUsed = defaults.object(forKey: "dailyUsageRecordPercent") as? Double
+            usageSource = .localDailySnapshots
+        } else if canUseWindowBaselineEstimate {
+            yesterdayUsed = previousBaselinePercent
+            usageSource = .windowBaselineEstimate
+        } else {
+            yesterdayUsed = nil
+            usageSource = nil
+        }
         let budget = RolloverBudgetCalculator.calculate(
             windowDurationMins: snapshot.windowDurationMins,
             yesterdayUsedPercent: yesterdayUsed,
-            sourceDay: hasYesterday ? previousDay : nil
+            sourceDay: yesterdayUsed == nil ? nil : previousDay,
+            yesterdayUsageSource: usageSource
         )
 
         defaults.set(today, forKey: "rolloverBudgetDay")
@@ -339,10 +363,15 @@ final class UsageMonitor: ObservableObject {
         } else {
             defaults.removeObject(forKey: "rolloverYesterdayUsed")
         }
+        if let usageSource {
+            defaults.set(usageSource.rawValue, forKey: "rolloverUsageSource")
+        } else {
+            defaults.removeObject(forKey: "rolloverUsageSource")
+        }
         defaults.removeObject(forKey: "rolloverYesterdayAvailable")
         defaults.removeObject(forKey: "availableBudgetDay")
         defaults.removeObject(forKey: "availableBudgetPercent")
-        if let previousDay, hasYesterday {
+        if let previousDay, yesterdayUsed != nil {
             defaults.set(previousDay, forKey: "rolloverSourceDay")
         } else {
             defaults.removeObject(forKey: "rolloverSourceDay")

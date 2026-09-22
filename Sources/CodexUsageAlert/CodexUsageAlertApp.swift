@@ -734,8 +734,10 @@ private struct DailyBudgetCard: View {
                     label: "周日均"
                 )
                 BudgetInputValue(
-                    value: formatted(budget?.yesterdayUsedPercent),
-                    label: "昨日已用"
+                    value: yesterdayUsedValue,
+                    label: budget?.yesterdayUsageSource == .windowBaselineEstimate
+                        ? "昨日估算"
+                        : "昨日已用"
                 )
                 BudgetInputValue(
                     value: "+\(formatted(budget?.carriedPercent))",
@@ -775,7 +777,10 @@ private struct DailyBudgetCard: View {
         }
         if budget.hasYesterdayData {
             let sourceDay = budget.sourceDay ?? "昨日"
-            return "周日均：App Server · \(sourceDay)：本机快照 · 20%：个人规则"
+            if budget.yesterdayUsageSource == .windowBaselineEstimate {
+                return "周日均：App Server · \(sourceDay)：窗口基线估算 · 20%：个人规则"
+            }
+            return "周日均：App Server · \(sourceDay)：本机日快照 · 20%：个人规则"
         }
         return "周日均：App Server · 昨日：暂无本机快照 · 20%：个人规则"
     }
@@ -788,7 +793,18 @@ private struct DailyBudgetCard: View {
     }
 
     private var sourceHelp: String {
-        "周日均来自 account/rateLimits/read 的窗口长度（100 ÷ 窗口天数）；昨日已用来自本机同日额度快照差值；20% 是你的个人每日基础上限，不是 OpenAI 官方硬限制。缺少昨日快照时不按 0 计算，也不结转。"
+        if budget?.yesterdayUsageSource == .windowBaselineEstimate {
+            return "周日均来自 account/rateLimits/read（100 ÷ 窗口天数）。当前额度窗口从昨日开始，因此用今天首次快照的周累计基线估算昨日已用；该估算可能包含今天首次快照前的用量。20% 是你的个人规则。"
+        }
+        return "周日均来自 account/rateLimits/read（100 ÷ 窗口天数）；昨日已用来自本机同日额度快照差值；20% 是你的个人每日基础上限，不是 OpenAI 官方硬限制。缺少昨日快照时不按 0 计算，也不结转。"
+    }
+
+    private var yesterdayUsedValue: String {
+        let value = formatted(budget?.yesterdayUsedPercent)
+        if budget?.yesterdayUsageSource == .windowBaselineEstimate {
+            return "≈\(value)"
+        }
+        return value
     }
 
     private func formatted(_ value: Double?) -> String {
@@ -916,7 +932,7 @@ private struct TokenUsageCard: View {
                     Image(systemName: "clock.badge.exclamationmark.fill")
                         .foregroundStyle(.orange.opacity(0.9))
                     Text(
-                        "今日 \(shortDate(todayKey)) 尚无 Token 日汇总；App Server 当前只返回到 \(shortDate(latestUsageDate))，服务端汇总尚未生成或同步，未按 0 计。"
+                        "服务端日桶截至 \(shortDate(latestUsageDate))；本地北京时间为 \(shortDate(todayKey))。官方未声明 startDate 时区，暂不换算，也不把本地今天补为 0。"
                     )
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -926,7 +942,7 @@ private struct TokenUsageCard: View {
                 .padding(.vertical, 6)
                 .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
                 .help(
-                    "数据源：Codex App Server account/usage/read。当前 dailyUsageBuckets 的最后日期是 \(latestUsageDate)，本机北京时间日期是 \(todayKey)。该接口返回服务端按日汇总，不是实时 Token 明细。"
+                    "数据源：Codex App Server account/usage/read。dailyUsageBuckets.startDate 原值为 \(latestUsageDate)，本机北京时间日期为 \(todayKey)。OpenAI 文档仅将其定义为每日分桶日期，未指定时区。"
                 )
             }
 
@@ -985,7 +1001,7 @@ private struct TokenUsageCard: View {
     private var monthToDateLabel: String {
         guard let latestUsageDate else { return "本月暂无日汇总" }
         if latestUsageDate == todayKey { return "本月截至今日" }
-        return "本月截至 \(shortDate(latestUsageDate))"
+        return "本月·服务端至 \(shortDate(latestUsageDate))"
     }
 
     private func shortDate(_ value: String) -> String {

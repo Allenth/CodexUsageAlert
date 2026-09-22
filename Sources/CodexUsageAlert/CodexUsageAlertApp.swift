@@ -19,7 +19,7 @@ struct CodexUsageAlertApp: App {
         } label: {
             HStack(spacing: 4) {
                 Image(nsImage: MenuBarIcon.image)
-                    .frame(width: 16, height: 16)
+                    .frame(width: 18, height: 18)
                 Text(monitor.menuTitle)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
             }
@@ -30,58 +30,139 @@ struct CodexUsageAlertApp: App {
 
 private enum MenuBarIcon {
     static let image: NSImage = {
-        let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { _ in
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
             NSGraphicsContext.saveGraphicsState()
             defer { NSGraphicsContext.restoreGraphicsState() }
 
-            if let context = NSGraphicsContext.current?.cgContext,
-               let gradient = CGGradient(
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.setShouldAntialias(true)
+
+            let iconRect = CGRect(x: 0.75, y: 0.75, width: 16.5, height: 16.5)
+            let iconPath = CGPath(
+                roundedRect: iconRect,
+                cornerWidth: 4.2,
+                cornerHeight: 4.2,
+                transform: nil
+            )
+
+            context.saveGState()
+            context.addPath(iconPath)
+            context.clip()
+            if let background = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: [
+                    NSColor(
+                        calibratedRed: 0.06,
+                        green: 0.20,
+                        blue: 0.48,
+                        alpha: 1
+                    ).cgColor,
+                    NSColor(
+                        calibratedRed: 0.015,
+                        green: 0.045,
+                        blue: 0.15,
+                        alpha: 1
+                    ).cgColor,
+                ] as CFArray,
+                locations: [0, 1]
+            ) {
+                context.drawLinearGradient(
+                    background,
+                    start: CGPoint(x: 4, y: 17),
+                    end: CGPoint(x: 14, y: 1),
+                    options: []
+                )
+            }
+            context.restoreGState()
+
+            context.addPath(iconPath)
+            context.setStrokeColor(
+                NSColor(
+                    calibratedRed: 0.12,
+                    green: 0.48,
+                    blue: 0.92,
+                    alpha: 0.8
+                ).cgColor
+            )
+            context.setLineWidth(0.8)
+            context.strokePath()
+
+            context.setLineWidth(3.35)
+            context.setLineCap(.round)
+            context.addArc(
+                center: CGPoint(x: 8.4, y: 8.2),
+                radius: 5.15,
+                startAngle: 35 * .pi / 180,
+                endAngle: 322 * .pi / 180,
+                clockwise: false
+            )
+            context.setStrokeColor(
+                NSColor(
+                    calibratedRed: 0.25,
+                    green: 0.40,
+                    blue: 0.68,
+                    alpha: 1
+                ).cgColor
+            )
+            context.strokePath()
+
+            if let ringGradient = CGGradient(
                    colorsSpace: CGColorSpaceCreateDeviceRGB(),
                    colors: [
                        NSColor(
-                           calibratedRed: 0.12,
-                           green: 0.92,
-                           blue: 0.90,
+                           calibratedRed: 0.22,
+                           green: 1.00,
+                           blue: 0.95,
                            alpha: 1
                        ).cgColor,
                        NSColor(
-                           calibratedRed: 0.08,
-                           green: 0.48,
+                           calibratedRed: 0.02,
+                           green: 0.58,
                            blue: 1.00,
                            alpha: 1
                        ).cgColor,
                    ] as CFArray,
                    locations: [0, 1]
                ) {
-                context.setLineWidth(2.2)
+                context.saveGState()
+                context.setLineWidth(3.35)
                 context.setLineCap(.round)
                 context.addArc(
-                    center: CGPoint(x: 7.7, y: 7.7),
-                    radius: 5.4,
-                    startAngle: 42 * .pi / 180,
-                    endAngle: 318 * .pi / 180,
+                    center: CGPoint(x: 8.4, y: 8.2),
+                    radius: 5.15,
+                    startAngle: 70 * .pi / 180,
+                    endAngle: 300 * .pi / 180,
                     clockwise: false
                 )
                 context.replacePathWithStrokedPath()
                 context.clip()
                 context.drawLinearGradient(
-                    gradient,
-                    start: CGPoint(x: 2, y: 3),
-                    end: CGPoint(x: 13, y: 13),
+                    ringGradient,
+                    start: CGPoint(x: 3, y: 14),
+                    end: CGPoint(x: 13, y: 3),
                     options: []
                 )
+                context.restoreGState()
             }
 
-            NSColor(
-                calibratedRed: 1.00,
-                green: 0.66,
-                blue: 0.12,
-                alpha: 1
-            ).setFill()
-            NSBezierPath(
-                ovalIn: NSRect(x: 11.8, y: 11.8, width: 2.2, height: 2.2)
+            context.saveGState()
+            context.setShadow(
+                offset: .zero,
+                blur: 2.3,
+                color: NSColor.systemOrange.withAlphaComponent(0.9).cgColor
             )
-            .fill()
+            context.setFillColor(NSColor.systemYellow.cgColor)
+            context.fillEllipse(in: CGRect(x: 12.2, y: 12.0, width: 2.7, height: 2.7))
+            context.restoreGState()
+
+            context.setStrokeColor(NSColor.systemYellow.cgColor)
+            context.setLineWidth(0.9)
+            context.setLineCap(.round)
+            context.move(to: CGPoint(x: 13.55, y: 15.2))
+            context.addLine(to: CGPoint(x: 13.55, y: 16.1))
+            context.move(to: CGPoint(x: 15.25, y: 13.35))
+            context.addLine(to: CGPoint(x: 16.1, y: 13.35))
+            context.strokePath()
             return true
         }
         image.isTemplate = false

@@ -81,8 +81,9 @@ Sources/CodexUsageAlert/    SwiftUI 应用、监控和系统通知
 Sources/CodexUsageCLI/      JSON 命令行读取器
 Tests/UsageCoreTests/       核心逻辑测试
 Resources/                  Info.plist 与应用图标
-scripts/build_app.sh        .app 构建和临时签名脚本
+scripts/build_app.sh        .app 构建及临时/Developer ID 签名脚本
 scripts/build_sandbox_app.sh App 沙盒开发版构建脚本
+scripts/build_dmg.sh        Developer ID 签名、DMG 打包与可选公证脚本
 docs/                       开发计划、提示词和项目文档
 ```
 
@@ -97,7 +98,7 @@ docs/                       开发计划、提示词和项目文档
 
 ## 分发说明
 
-构建脚本使用临时签名，适合本机运行和开发测试。正式对外分发需要 Apple Developer ID 签名与公证；Mac App Store 版本还需要完成 App Sandbox 和正式 Xcode 分发工程改造，详见[开发计划](docs/app-store-development-plan.md)。
+日常 `.app` 构建默认使用临时签名。`scripts/build_dmg.sh` 会自动查找 Developer ID Application 证书，为正常安装版和 DMG 正式签名，并在设置 `NOTARY_PROFILE` 时提交 Apple 公证。Mac App Store 版本仍需要完成正式 Xcode 分发工程改造，详见[开发计划](docs/app-store-development-plan.md)。
 
 ## 隐私
 

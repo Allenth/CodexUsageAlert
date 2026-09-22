@@ -39,6 +39,18 @@ swift test
 
 正常安装版构建完成后默认保持关闭。只有在准备 GitHub Release 时才启动做一次发布验收，并继续执行正式签名、公证和压缩包校验。
 
+制作 Developer ID 签名的分享 DMG：
+
+```bash
+./scripts/build_dmg.sh
+```
+
+DMG 会包含正常安装版、`Applications` 拖拽入口、中文使用说明和 MIT 许可证。若已用 `notarytool store-credentials` 保存公证凭据，可设置 `NOTARY_PROFILE` 后构建并自动提交公证：
+
+```bash
+NOTARY_PROFILE="你的公证凭据名称" ./scripts/build_dmg.sh
+```
+
 ## 提交规则
 
 1. 功能、测试和文档在同一分支中同步提交，不复制另一套源码目录。

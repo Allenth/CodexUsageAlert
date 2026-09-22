@@ -66,17 +66,19 @@ Sources/CodexUsageCLI/      JSON 命令行读取器
 Tests/UsageCoreTests/       核心逻辑测试
 Resources/                  Info.plist 与应用图标
 scripts/build_app.sh        .app 构建和临时签名脚本
+docs/                       开发计划、提示词和项目文档
 ```
 
-## 从零生成提示词
+## 项目文档
 
-仓库附带一套可直接交给 Codex 使用的完整开发提示词，包含项目复盘、一次性总提示词、7 个分阶段提示词、常用升级提示词和最终验收标准：
+项目文档统一保存在 [`docs`](docs/README.md) 目录，包括：
 
-[查看《从零生成 Codex 用量预警》提示词](提示词-从零生成Codex用量预警.md)
+- [Mac App Store 开发计划](docs/app-store-development-plan.md)
+- [从零生成 Codex 用量预警的完整开发提示词](docs/development-prompt.md)
 
 ## 分发说明
 
-构建脚本使用临时签名，适合本机运行和开发测试。正式对外分发需要 Apple Developer ID 签名与公证。
+构建脚本使用临时签名，适合本机运行和开发测试。正式对外分发需要 Apple Developer ID 签名与公证；Mac App Store 版本还需要完成 App Sandbox 和正式 Xcode 分发工程改造，详见[开发计划](docs/app-store-development-plan.md)。
 
 ## 隐私
 

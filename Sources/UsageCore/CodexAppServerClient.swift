@@ -18,6 +18,9 @@ public enum CodexUsageClientError: LocalizedError {
         case .invalidResponse(let detail):
             return "Codex 返回了无法识别的数据：\(detail)"
         case .serverError(let detail):
+            if detail.localizedCaseInsensitiveContains("failed to fetch codex rate limits") {
+                return "Codex 尚未就绪。请先打开 Codex/ChatGPT 并确认已登录，然后返回刷新。"
+            }
             return "Codex App Server 错误：\(detail)"
         }
     }

@@ -249,7 +249,7 @@ private struct UsagePopover: View {
                     VStack(alignment: .leading, spacing: 13) {
                         MetricRow(
                             icon: "arrow.up.right",
-                            label: "今日增加",
+                            label: "本机今日增量",
                             value: "\(UsageMonitor.percent(monitor.dailyIncrease))%",
                             tint: statusColor
                         )
@@ -310,7 +310,12 @@ private struct UsagePopover: View {
                 }
 
                 if let error = monitor.errorMessage {
-                    ErrorBanner(message: error)
+                    ErrorBanner(
+                        message: error,
+                        canOpenCodex: monitor.canOpenCodexApplication,
+                        isLaunchingCodex: monitor.isLaunchingCodex,
+                        onOpenCodex: monitor.openCodexApplication
+                    )
                 }
 
                 if monitor.shouldOfferCodexSelection {
@@ -459,7 +464,7 @@ private struct UsagePopover: View {
     private var footer: some View {
         HStack(spacing: 5) {
             Image(systemName: "lock.shield.fill")
-            Text("数据仅从本机 Codex CLI 读取")
+            Text("额度来自 Codex 服务端 · 日增量本机计算")
             Spacer()
             Text(monitor.refreshSummary)
         }
@@ -787,7 +792,7 @@ private struct DailyBudgetCard: View {
                     Text("今日额度预算")
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("按自然日累计，基础上限 20 个百分点")
+                    Text("按本机快照差值累计，基础上限 20 个百分点")
                         .font(.system(size: 9.5))
                         .foregroundStyle(.white.opacity(0.42))
                 }
@@ -874,6 +879,22 @@ private struct DailyBudgetCard: View {
                 .foregroundStyle(.white.opacity(0.55))
                 .lineLimit(2)
 
+            if let budget, !budget.hasYesterdayData {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "desktopcomputer.trianglebadge.exclamationmark")
+                        .foregroundStyle(.orange.opacity(0.9))
+                    Text(
+                        "此设备从首次刷新开始记录，无法回溯其他电脑或首次刷新前的今日增量；周期已用与剩余仍来自账号实时数据。"
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.system(size: 8.2))
+                .foregroundStyle(.white.opacity(0.55))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+            }
+
             HStack(spacing: 5) {
                 Image(systemName: "info.circle.fill")
                     .help(sourceHelp)
@@ -903,7 +924,7 @@ private struct DailyBudgetCard: View {
 
     private var formulaDescription: String {
         guard let budget, budget.hasYesterdayData else {
-            return "今日上限 20%；取得完整昨日快照后，再加上昨日日均未用部分。"
+            return "今日上限 20%；此设备取得完整昨日快照后，再加上昨日日均未用部分。"
         }
         return "今日上限 = \(formatted(budget.baseDailyCapPercent)) + \(formatted(budget.carriedPercent)) = \(formatted(budget.todayAvailablePercent))"
     }
@@ -999,7 +1020,7 @@ private struct TokenUsageCard: View {
                 HStack(spacing: 6) {
                     Image(systemName: "number.circle.fill")
                         .foregroundStyle(.cyan)
-                    Text("Token 使用量")
+                    Text("账号 Token 使用量")
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(.white)
                 }
@@ -1163,7 +1184,7 @@ private struct TokenUsageUnavailableCard: View {
                     .foregroundStyle(.cyan)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text("Token 使用量")
+                Text("账号 Token 使用量")
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(isRefreshing ? "正在读取 Token 数据…" : "Token 数据暂不可用")
@@ -1212,16 +1233,43 @@ private struct StatTile: View {
 
 private struct ErrorBanner: View {
     let message: String
+    let canOpenCodex: Bool
+    let isLaunchingCodex: Bool
+    let onOpenCodex: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.system(size: 10.5))
-                .fixedSize(horizontal: false, vertical: true)
-                .foregroundStyle(.white.opacity(0.86))
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(message)
+                        .font(.system(size: 10.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(.white.opacity(0.86))
+                    Text("首次使用另一台电脑时，请先启动 Codex/ChatGPT 并确认账号已登录。")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+                Spacer(minLength: 0)
+            }
+
+            if canOpenCodex {
+                Button(action: onOpenCodex) {
+                    HStack(spacing: 6) {
+                        if isLaunchingCodex {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.up.forward.app.fill")
+                        }
+                        Text(isLaunchingCodex ? "正在启动 Codex" : "打开 Codex/ChatGPT")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange.opacity(0.72))
+                .disabled(isLaunchingCodex)
+            }
         }
         .padding(10)
         .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))

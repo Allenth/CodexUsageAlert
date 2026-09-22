@@ -2,6 +2,17 @@ import XCTest
 @testable import UsageCore
 
 final class UsageCoreTests: XCTestCase {
+    func testRateLimitFetchErrorProvidesActionableCodexLaunchHint() {
+        let error = CodexUsageClientError.serverError(
+            "failed to fetch codex rate limits: error sending request"
+        )
+
+        XCTAssertEqual(
+            error.errorDescription,
+            "Codex 尚未就绪。请先打开 Codex/ChatGPT 并确认已登录，然后返回刷新。"
+        )
+    }
+
     func testSnapshotClampsPercentages() {
         let snapshot = UsageSnapshot(
             usedPercent: 120,

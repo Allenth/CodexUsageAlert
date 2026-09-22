@@ -45,6 +45,7 @@ final class UsageMonitor: ObservableObject {
     @Published var rolloverBudget: DailyBudgetRollover?
     @Published var errorMessage: String?
     @Published var isRefreshing = false
+    @Published private(set) var isLaunchingCodex = false
     @Published var notificationStatus = "未测试"
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published private(set) var codexSelectionName: String?
@@ -182,6 +183,41 @@ final class UsageMonitor: ObservableObject {
                     if Self.isRunningInAppSandbox || Self.isExecutableNotFound(error) {
                         self.shouldOfferCodexSelection = true
                     }
+                }
+            }
+        }
+    }
+
+    var canOpenCodexApplication: Bool {
+        Self.codexApplicationURL != nil
+    }
+
+    func openCodexApplication() {
+        guard let applicationURL = Self.codexApplicationURL else {
+            errorMessage = "未找到 Codex/ChatGPT 应用。请先安装并登录，然后重新刷新。"
+            return
+        }
+
+        isLaunchingCodex = true
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(
+            at: applicationURL,
+            configuration: configuration
+        ) { [weak self] _, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if let error {
+                    self.isLaunchingCodex = false
+                    self.errorMessage = "无法打开 Codex/ChatGPT：\(error.localizedDescription)"
+                    return
+                }
+
+                self.errorMessage = "Codex/ChatGPT 已启动，正在等待登录状态就绪…"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                    guard let self else { return }
+                    self.isLaunchingCodex = false
+                    self.refresh()
                 }
             }
         }
@@ -496,6 +532,22 @@ final class UsageMonitor: ObservableObject {
 
     private static var isRunningInAppSandbox: Bool {
         ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }
+
+    private static var codexApplicationURL: URL? {
+        let workspace = NSWorkspace.shared
+        for bundleIdentifier in ["com.openai.codex", "com.openai.chat"] {
+            if let url = workspace.urlForApplication(withBundleIdentifier: bundleIdentifier) {
+                return url
+            }
+        }
+
+        for path in ["/Applications/Codex.app", "/Applications/ChatGPT.app"] {
+            if FileManager.default.fileExists(atPath: path) {
+                return URL(fileURLWithPath: path)
+            }
+        }
+        return nil
     }
 
     private static func isExecutableNotFound(_ error: Error) -> Bool {

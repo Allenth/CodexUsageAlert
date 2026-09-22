@@ -26,11 +26,13 @@ public enum CodexUsageClientError: LocalizedError {
 public struct CodexAppServerClient: Sendable {
     public let executableURL: URL
     public let securityScopedResourceURL: URL?
+    public let codexHomeURL: URL?
     public let timeout: TimeInterval
 
     public init(
         executableURL: URL? = nil,
         securityScopedResourceURL: URL? = nil,
+        codexHomeURL: URL? = nil,
         timeout: TimeInterval = 15
     ) throws {
         guard let resolved = executableURL ?? Self.resolveExecutable() else {
@@ -38,6 +40,7 @@ public struct CodexAppServerClient: Sendable {
         }
         self.executableURL = resolved
         self.securityScopedResourceURL = securityScopedResourceURL
+        self.codexHomeURL = codexHomeURL
         self.timeout = timeout
     }
 
@@ -88,16 +91,24 @@ public struct CodexAppServerClient: Sendable {
         return candidates.first(where: { fileManager.isExecutableFile(atPath: $0.path) })
     }
 
+    public static func containsCodexAuthentication(_ directoryURL: URL) -> Bool {
+        FileManager.default.isReadableFile(
+            atPath: directoryURL.appendingPathComponent("auth.json").path
+        )
+    }
+
     public func fetchSnapshot() throws -> UsageSnapshot {
         try fetchDashboardSnapshot().quota
     }
 
     public func fetchDashboardSnapshot() throws -> UsageDashboardSnapshot {
-        let didStartSecurityScope = securityScopedResourceURL?
-            .startAccessingSecurityScopedResource() ?? false
+        let securityScopedURLs = [securityScopedResourceURL, codexHomeURL].compactMap { $0 }
+        let startedSecurityScopes = securityScopedURLs.filter {
+            $0.startAccessingSecurityScopedResource()
+        }
         defer {
-            if didStartSecurityScope {
-                securityScopedResourceURL?.stopAccessingSecurityScopedResource()
+            for url in startedSecurityScopes {
+                url.stopAccessingSecurityScopedResource()
             }
         }
 
@@ -111,6 +122,11 @@ public struct CodexAppServerClient: Sendable {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = errors
+        if let codexHomeURL {
+            var environment = ProcessInfo.processInfo.environment
+            environment["CODEX_HOME"] = codexHomeURL.path
+            process.environment = environment
+        }
 
         try process.run()
         let timeoutWork = DispatchWorkItem {

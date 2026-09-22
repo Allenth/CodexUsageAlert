@@ -6,6 +6,7 @@
 
 - [Mac App Store 开发计划](app-store-development-plan.md)：从可行性验证到 TestFlight、商店审核和发布维护的完整路线图。
 - [Mac App Store 上架资料](app-store-metadata.md)：价格、官网、支持页、隐私政策和待准备的商店字段。
+- [App Sandbox 可行性原型](sandbox-prototype.md)：用户授权 Codex 数据来源的技术验证和验收清单。
 - [从零生成项目的开发提示词](development-prompt.md)：项目复盘、一次性总提示词、分阶段提示词和验收标准。
 
 ## 维护规则

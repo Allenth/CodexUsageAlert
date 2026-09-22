@@ -3,7 +3,7 @@
 .swiftpm/
 DerivedData/
 dist/
+dist-sandbox/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 *.zip
-

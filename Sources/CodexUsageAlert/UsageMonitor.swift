@@ -48,6 +48,7 @@ final class UsageMonitor: ObservableObject {
     @Published var notificationStatus = "未测试"
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published private(set) var codexSelectionName: String?
+    @Published private(set) var codexHomeSelectionName: String?
     @Published private(set) var shouldOfferCodexSelection = false
     @Published private(set) var refreshSchedule: RefreshSchedule
     @Published private(set) var dailyRefreshTime: Date
@@ -56,6 +57,7 @@ final class UsageMonitor: ObservableObject {
     private let defaults = UserDefaults.standard
     private let codexAccessStore = CodexAccessStore()
     private var codexGrant: CodexExecutableGrant?
+    private var codexHomeGrant: CodexHomeGrant?
     private var timer: Timer?
 
     init() {
@@ -73,8 +75,11 @@ final class UsageMonitor: ObservableObject {
             rawValue: defaults.string(forKey: "tokenUnitStyle") ?? ""
         ) ?? .chinese
         codexGrant = codexAccessStore.loadGrant()
+        codexHomeGrant = codexAccessStore.loadCodexHomeGrant()
         codexSelectionName = codexGrant?.displayName
-        shouldOfferCodexSelection = Self.isRunningInAppSandbox && codexGrant == nil
+        codexHomeSelectionName = codexHomeGrant?.displayName
+        shouldOfferCodexSelection = Self.isRunningInAppSandbox
+            && (codexGrant == nil || codexHomeGrant == nil)
 
         requestNotificationPermission()
         refresh()
@@ -102,6 +107,10 @@ final class UsageMonitor: ObservableObject {
 
     var codexSourceSummary: String {
         codexSelectionName ?? "自动查找本机 Codex"
+    }
+
+    var codexHomeSourceSummary: String {
+        codexHomeSelectionName ?? "尚未授权 Codex 登录资料"
     }
 
     func setRefreshSchedule(_ schedule: RefreshSchedule) {
@@ -147,12 +156,14 @@ final class UsageMonitor: ObservableObject {
         isRefreshing = true
         errorMessage = nil
         let grant = codexGrant
+        let homeGrant = codexHomeGrant
 
         DispatchQueue.global(qos: .utility).async {
             let result = Result {
                 try CodexAppServerClient(
                     executableURL: grant?.executableURL,
-                    securityScopedResourceURL: grant?.selectedURL
+                    securityScopedResourceURL: grant?.selectedURL,
+                    codexHomeURL: homeGrant?.selectedURL
                 ).fetchDashboardSnapshot()
             }
             DispatchQueue.main.async { [weak self] in
@@ -181,7 +192,20 @@ final class UsageMonitor: ObservableObject {
             guard let grant = try codexAccessStore.chooseGrant() else { return }
             codexGrant = grant
             codexSelectionName = grant.displayName
-            shouldOfferCodexSelection = false
+            shouldOfferCodexSelection = Self.isRunningInAppSandbox && codexHomeGrant == nil
+            refresh()
+        } catch {
+            errorMessage = error.localizedDescription
+            shouldOfferCodexSelection = true
+        }
+    }
+
+    func chooseCodexHomeLocation() {
+        do {
+            guard let grant = try codexAccessStore.chooseCodexHomeGrant() else { return }
+            codexHomeGrant = grant
+            codexHomeSelectionName = grant.displayName
+            shouldOfferCodexSelection = Self.isRunningInAppSandbox && codexGrant == nil
             refresh()
         } catch {
             errorMessage = error.localizedDescription
@@ -193,6 +217,14 @@ final class UsageMonitor: ObservableObject {
         codexAccessStore.clearGrant()
         codexGrant = nil
         codexSelectionName = nil
+        shouldOfferCodexSelection = Self.isRunningInAppSandbox
+        refresh()
+    }
+
+    func clearCodexHomeLocation() {
+        codexAccessStore.clearCodexHomeGrant()
+        codexHomeGrant = nil
+        codexHomeSelectionName = nil
         shouldOfferCodexSelection = Self.isRunningInAppSandbox
         refresh()
     }

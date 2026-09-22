@@ -153,4 +153,49 @@ final class UsageCoreTests: XCTestCase {
             "2026-09-20"
         )
     }
+
+    func testResolvesUserSelectedCodexExecutable() throws {
+        let temporaryRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let application = temporaryRoot.appendingPathComponent("ChatGPT.app", isDirectory: true)
+        let resources = application.appendingPathComponent("Contents/Resources", isDirectory: true)
+        let mockExecutable = resources.appendingPathComponent("codex")
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        try FileManager.default.createDirectory(
+            at: resources,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.copyItem(
+            at: URL(fileURLWithPath: "/bin/echo"),
+            to: mockExecutable
+        )
+
+        XCTAssertEqual(
+            CodexAppServerClient.resolveExecutable(fromUserSelection: application),
+            mockExecutable
+        )
+        XCTAssertEqual(
+            CodexAppServerClient.resolveExecutable(
+                fromUserSelection: URL(fileURLWithPath: "/bin/echo")
+            ),
+            URL(fileURLWithPath: "/bin/echo")
+        )
+    }
+
+    func testRecognizesCodexAuthenticationDirectory() throws {
+        let temporaryRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+        try FileManager.default.createDirectory(
+            at: temporaryRoot,
+            withIntermediateDirectories: true
+        )
+        XCTAssertFalse(CodexAppServerClient.containsCodexAuthentication(temporaryRoot))
+
+        let authFile = temporaryRoot.appendingPathComponent("auth.json")
+        XCTAssertTrue(FileManager.default.createFile(atPath: authFile.path, contents: Data()))
+        XCTAssertTrue(CodexAppServerClient.containsCodexAuthentication(temporaryRoot))
+    }
 }

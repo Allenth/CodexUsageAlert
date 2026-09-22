@@ -11,13 +11,24 @@ struct CodexExecutableGrant: Sendable {
     }
 }
 
+struct CodexHomeGrant: Sendable {
+    let selectedURL: URL
+
+    var displayName: String {
+        selectedURL.lastPathComponent
+    }
+}
+
 enum CodexAccessStoreError: LocalizedError {
     case unsupportedSelection
+    case missingCodexAuthentication
 
     var errorDescription: String? {
         switch self {
         case .unsupportedSelection:
             return "所选项目中没有找到可执行的 Codex 程序。"
+        case .missingCodexAuthentication:
+            return "所选文件夹中没有找到 Codex 登录资料（auth.json）。"
         }
     }
 }
@@ -26,6 +37,7 @@ enum CodexAccessStoreError: LocalizedError {
 final class CodexAccessStore {
     private let defaults: UserDefaults
     private let bookmarkKey = "codexSecurityScopedBookmark"
+    private let codexHomeBookmarkKey = "codexHomeSecurityScopedBookmark"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -42,6 +54,12 @@ final class CodexAccessStore {
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
+            let didStartSecurityScope = selectedURL.startAccessingSecurityScopedResource()
+            defer {
+                if didStartSecurityScope {
+                    selectedURL.stopAccessingSecurityScopedResource()
+                }
+            }
             guard let executableURL = CodexAppServerClient.resolveExecutable(
                 fromUserSelection: selectedURL
             ) else {
@@ -74,6 +92,12 @@ final class CodexAccessStore {
         panel.treatsFilePackagesAsDirectories = false
 
         guard panel.runModal() == .OK, let selectedURL = panel.url else { return nil }
+        let didStartSecurityScope = selectedURL.startAccessingSecurityScopedResource()
+        defer {
+            if didStartSecurityScope {
+                selectedURL.stopAccessingSecurityScopedResource()
+            }
+        }
         guard let executableURL = CodexAppServerClient.resolveExecutable(
             fromUserSelection: selectedURL
         ) else {
@@ -87,16 +111,81 @@ final class CodexAccessStore {
         )
     }
 
+    func loadCodexHomeGrant() -> CodexHomeGrant? {
+        guard let bookmark = defaults.data(forKey: codexHomeBookmarkKey) else { return nil }
+
+        do {
+            var isStale = false
+            let selectedURL = try URL(
+                resolvingBookmarkData: bookmark,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+            let didStartSecurityScope = selectedURL.startAccessingSecurityScopedResource()
+            defer {
+                if didStartSecurityScope {
+                    selectedURL.stopAccessingSecurityScopedResource()
+                }
+            }
+            guard CodexAppServerClient.containsCodexAuthentication(selectedURL) else {
+                defaults.removeObject(forKey: codexHomeBookmarkKey)
+                return nil
+            }
+
+            if isStale {
+                try saveBookmark(for: selectedURL, key: codexHomeBookmarkKey)
+            }
+            return CodexHomeGrant(selectedURL: selectedURL)
+        } catch {
+            defaults.removeObject(forKey: codexHomeBookmarkKey)
+            return nil
+        }
+    }
+
+    func chooseCodexHomeGrant() throws -> CodexHomeGrant? {
+        let panel = NSOpenPanel()
+        panel.title = "选择 Codex 登录资料文件夹"
+        panel.message = "请选择包含 auth.json 的 .codex 文件夹。可按 ⌘⇧G 输入 ~/.codex。"
+        panel.prompt = "授权读取"
+        panel.directoryURL = URL(fileURLWithPath: "/Users", isDirectory: true)
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+
+        guard panel.runModal() == .OK, let selectedURL = panel.url else { return nil }
+        let didStartSecurityScope = selectedURL.startAccessingSecurityScopedResource()
+        defer {
+            if didStartSecurityScope {
+                selectedURL.stopAccessingSecurityScopedResource()
+            }
+        }
+        guard CodexAppServerClient.containsCodexAuthentication(selectedURL) else {
+            throw CodexAccessStoreError.missingCodexAuthentication
+        }
+
+        try saveBookmark(for: selectedURL, key: codexHomeBookmarkKey)
+        return CodexHomeGrant(selectedURL: selectedURL)
+    }
+
     func clearGrant() {
         defaults.removeObject(forKey: bookmarkKey)
     }
 
+    func clearCodexHomeGrant() {
+        defaults.removeObject(forKey: codexHomeBookmarkKey)
+    }
+
     private func saveBookmark(for selectedURL: URL) throws {
+        try saveBookmark(for: selectedURL, key: bookmarkKey)
+    }
+
+    private func saveBookmark(for selectedURL: URL, key: String) throws {
         let bookmark = try selectedURL.bookmarkData(
             options: [.withSecurityScope],
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
-        defaults.set(bookmark, forKey: bookmarkKey)
+        defaults.set(bookmark, forKey: key)
     }
 }

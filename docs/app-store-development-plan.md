@@ -70,12 +70,12 @@ Mac App Store 应用必须启用 App Sandbox。当前应用直接执行另一个
 
 预计：1～2 天
 
-- [ ] 创建最小 Xcode 沙盒原型，不先迁移完整界面。
-- [ ] 启用 `com.apple.security.app-sandbox` 和必要的网络客户端权限。
-- [ ] 实现用户选择 Codex 程序与 security-scoped bookmark。
-- [ ] 在沙盒中启动 `codex app-server` 并读取额度与 Token 数据。
+- [x] 创建独立沙盒 Release 原型，不覆盖当前正式安装包。
+- [x] 启用 `com.apple.security.app-sandbox` 和必要的网络客户端权限。
+- [x] 实现用户选择 Codex 程序、登录资料与 security-scoped bookmark。
+- [x] 在沙盒中启动 `codex app-server` 并读取额度与 Token 数据。
 - [ ] 验证应用重启、系统重启、Codex 更新后的授权恢复。
-- [ ] 记录失败原因、系统日志和可接受的解决方案。
+- [x] 记录失败原因、实机结果和可接受的解决方案。
 
 决策点：
 
@@ -84,6 +84,8 @@ Mac App Store 应用必须启用 App Sandbox。当前应用直接执行另一个
 - 不通过：停止商店改造，改为 Developer ID 签名、公证和独立更新渠道。
 
 交付物：沙盒可行性报告和可运行原型。
+
+当前结论（2026-09-22）：应用重启后的授权恢复已通过；系统重启、Codex 更新和 20 次连续刷新尚待验证。技术路线由“不确定”更新为“可继续进入阶段 2”。详情见 [App Sandbox 可行性原型](sandbox-prototype.md)。
 
 ### 阶段 2：迁移为正式 Xcode 工程
 

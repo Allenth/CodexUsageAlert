@@ -629,6 +629,41 @@ private struct RefreshSettingsView: View {
                     .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
                 }
 
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Codex 登录资料")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.8))
+
+                    HStack(spacing: 10) {
+                        Image(systemName: "key.horizontal.fill")
+                            .foregroundStyle(.cyan)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(monitor.codexHomeSourceSummary)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.white.opacity(0.72))
+                                .lineLimit(1)
+                            Text("只授权给本机 Codex 读取，本应用不解析账号内容")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.white.opacity(0.42))
+                        }
+                        Spacer()
+                        Button("授权…") {
+                            monitor.chooseCodexHomeLocation()
+                        }
+                        .buttonStyle(.bordered)
+
+                        if monitor.codexHomeSelectionName != nil {
+                            Button("移除") {
+                                monitor.clearCodexHomeLocation()
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.white.opacity(0.55))
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
+                }
+
                 Divider().overlay(Color.white.opacity(0.08))
 
                 Button {
@@ -1198,27 +1233,35 @@ private struct CodexAccessCard: View {
     @ObservedObject var monitor: UsageMonitor
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "lock.open.display")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.cyan)
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                Image(systemName: "lock.open.display")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.cyan)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("需要授权 Codex 数据来源")
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text("请选择 Codex.app、ChatGPT.app 或 codex 程序。")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.white.opacity(0.55))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("完成本机 Codex 授权")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Text("App Store 沙盒需要分别读取程序和登录资料。")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.white.opacity(0.55))
+                }
             }
 
-            Spacer()
+            HStack(spacing: 8) {
+                Button(monitor.codexSelectionName == nil ? "1. 选择 Codex 程序" : "✓ Codex 程序") {
+                    monitor.chooseCodexLocation()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(monitor.codexSelectionName == nil ? .cyan.opacity(0.75) : .green.opacity(0.65))
 
-            Button("选择…") {
-                monitor.chooseCodexLocation()
+                Button(monitor.codexHomeSelectionName == nil ? "2. 授权登录资料" : "✓ 登录资料") {
+                    monitor.chooseCodexHomeLocation()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(monitor.codexHomeSelectionName == nil ? .cyan.opacity(0.75) : .green.opacity(0.65))
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.cyan.opacity(0.75))
         }
         .padding(12)
         .background(Color.cyan.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))

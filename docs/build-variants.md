@@ -30,6 +30,8 @@ open "dist-sandbox/Codex Usage Alert.app"
 
 日常只运行沙盒开发版，避免两个菜单栏进程同时读取数据、发送通知或造成界面差异判断错误。
 
+两个构建脚本都会先运行 `scripts/sync_version.sh`，根据 Git 提交总数同步营销版本号和 Build。详细规则见[版本号与更新记录规则](versioning.md)。
+
 ## 开源发布流程
 
 ```bash
@@ -57,3 +59,4 @@ NOTARY_PROFILE="你的公证凭据名称" ./scripts/build_dmg.sh
 2. `dist/`、`dist-sandbox/` 和本机构建产物不提交到 Git。
 3. 图标变更时同时更新 `AppIcon.png`、`AppIcon-master.png`、完整 `AppIcon.iconset/` 和 `AppIcon.icns`。
 4. 发布前确认正常安装版未混入沙盒原型专用的 Bundle ID 或显示名称。
+5. 每次正式功能修改使用一个清晰的 Git 提交，并同步维护应用内更新记录。

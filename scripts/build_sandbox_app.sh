@@ -11,6 +11,8 @@ OUTPUT_DIR="$PROJECT_DIR/dist-sandbox"
 APP_DIR="$OUTPUT_DIR/Codex Usage Alert.app"
 EXPECTED_APP_DIR="$PROJECT_DIR/dist-sandbox/Codex Usage Alert.app"
 
+"$PROJECT_DIR/scripts/sync_version.sh"
+
 if [[ "$APP_DIR" != "$EXPECTED_APP_DIR" ]]; then
   echo "拒绝清理非预期的构建目录：$APP_DIR" >&2
   exit 1

@@ -8,6 +8,7 @@
 - [Mac App Store 上架资料](app-store-metadata.md)：价格、官网、支持页、隐私政策和待准备的商店字段。
 - [App Sandbox 可行性原型](sandbox-prototype.md)：用户授权 Codex 数据来源的技术验证和验收清单。
 - [双版本构建与代码管理](build-variants.md)：沙盒开发版与开源正常安装版的职责、构建和发布规则。
+- [版本号与更新记录规则](versioning.md)：版本号、Build、Git 提交次数和应用内更新记录的对应关系。
 - [用户使用说明](user-guide.txt)：随 DMG 一起提供的安装、使用、预警和排错说明。
 - [从零生成项目的开发提示词](development-prompt.md)：项目复盘、一次性总提示词、分阶段提示词和验收标准。
 

@@ -9,13 +9,6 @@ struct CodexUsageAlertApp: App {
     @StateObject private var localization = AppLocalization.shared
 
     var body: some Scene {
-        WindowGroup("Codex Usage Alert", id: "dashboard") {
-            UsagePopover(monitor: monitor)
-                .environmentObject(localization)
-        }
-        .defaultSize(width: 380, height: 820)
-        .windowResizability(.contentSize)
-
         MenuBarExtra {
             UsagePopover(monitor: monitor)
                 .environmentObject(localization)
@@ -173,11 +166,46 @@ private enum MenuBarIcon {
     }()
 }
 
-private final class AppDelegate: NSObject, NSApplicationDelegate {
+@MainActor
+private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    private static weak var current: AppDelegate?
+    private var dashboardWindow: NSWindow?
+    private var allowsCompleteTermination = false
+    private let backgroundNoticeKey = "didShowMenuBarBackgroundNotice"
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.current = self
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceWillPowerOff),
+            name: NSWorkspace.willPowerOffNotification,
+            object: nil
+        )
         DispatchQueue.main.async {
             self.showDashboard(NSApplication.shared)
         }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !allowsCompleteTermination else { return .terminateNow }
+        showBackgroundNoticeIfNeeded()
+        DispatchQueue.main.async { [weak self] in
+            self?.enterMenuBarMode(sender)
+        }
+        return .terminateCancel
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard sender === dashboardWindow else { return true }
+        showBackgroundNoticeIfNeeded()
+        DispatchQueue.main.async { [weak self] in
+            self?.enterMenuBarMode(NSApplication.shared)
+        }
+        return true
     }
 
     func applicationShouldHandleReopen(
@@ -210,10 +238,73 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showDashboard(_ application: NSApplication) {
+        application.setActivationPolicy(.regular)
         application.activate(ignoringOtherApps: true)
-        if let window = application.windows.first(where: { $0.canBecomeKey }) {
-            window.makeKeyAndOrderFront(nil)
+        let window = dashboardWindow ?? makeDashboardWindow()
+        dashboardWindow = window
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func makeDashboardWindow() -> NSWindow {
+        let rootView = UsagePopover(monitor: UsageMonitor.shared)
+            .environmentObject(AppLocalization.shared)
+        let hostingController = NSHostingController(rootView: rootView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Codex Usage Alert"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.contentMinSize = NSSize(width: 380, height: 820)
+        window.contentMaxSize = NSSize(width: 380, height: 920)
+        window.setContentSize(NSSize(width: 380, height: 820))
+        window.backgroundColor = NSColor(
+            calibratedRed: 0.025,
+            green: 0.045,
+            blue: 0.10,
+            alpha: 1
+        )
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.standardWindowButton(.closeButton)?.target = self
+        window.standardWindowButton(.closeButton)?.action = #selector(closeDashboard)
+        window.setFrameAutosaveName("CodexUsageAlertDashboard")
+        window.center()
+        return window
+    }
+
+    @objc private func closeDashboard() {
+        showBackgroundNoticeIfNeeded()
+        enterMenuBarMode(NSApplication.shared)
+    }
+
+    private func enterMenuBarMode(_ application: NSApplication) {
+        for window in application.windows where window.canBecomeKey {
+            window.orderOut(nil)
         }
+        application.setActivationPolicy(.accessory)
+    }
+
+    private func showBackgroundNoticeIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: backgroundNoticeKey) else { return }
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = L("应用将在菜单栏继续运行", "The app will keep running in the menu bar")
+        alert.informativeText = L(
+            "关闭窗口或按 Command + Q 只会隐藏主界面和 Dock 图标，用量监控仍会继续。如需完全退出，请点击菜单栏面板中的电源按钮。",
+            "Closing the window or pressing Command-Q hides the dashboard and Dock icon while monitoring continues. To quit completely, use the power button in the menu bar panel."
+        )
+        alert.addButton(withTitle: L("知道了", "Got it"))
+        alert.runModal()
+        defaults.set(true, forKey: backgroundNoticeKey)
+    }
+
+    @objc private func workspaceWillPowerOff() {
+        allowsCompleteTermination = true
+    }
+
+    fileprivate static func quitCompletely() {
+        current?.allowsCompleteTermination = true
+        NSApplication.shared.terminate(nil)
     }
 }
 
@@ -469,13 +560,13 @@ private struct UsagePopover: View {
                 .help(L("刷新与通知设置", "Refresh, language, and notification settings"))
 
                 Button {
-                    NSApplication.shared.terminate(nil)
+                    AppDelegate.quitCompletely()
                 } label: {
                     Image(systemName: "power")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white.opacity(0.62))
-                .help(L("退出应用", "Quit"))
+                .help(L("完全退出应用", "Quit completely"))
             }
             .padding(.horizontal, 3)
         }
@@ -559,6 +650,7 @@ private struct RefreshSettingsView: View {
     @State private var selectedDailyRefreshTime: Date
     @State private var selectedTokenUnitStyle: TokenUnitStyle
     @State private var selectedLanguage: AppLanguage
+    @State private var showingReleaseNotes = false
 
     init(monitor: UsageMonitor, onDone: @escaping () -> Void) {
         self.monitor = monitor
@@ -761,12 +853,43 @@ private struct RefreshSettingsView: View {
                     .foregroundStyle(.white.opacity(0.82))
                 }
                 .buttonStyle(.plain)
+
+                Divider().overlay(Color.white.opacity(0.08))
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L("当前版本", "Current version"))
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(.white.opacity(0.45))
+                        Text(AppVersionInfo.displayName(isChinese: localization.isChinese))
+                            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.86))
+                    }
+
+                    Spacer()
+
+                    Button {
+                        showingReleaseNotes = true
+                    } label: {
+                        Label(L("查看更新记录", "View updates"), systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
             .padding(20)
         }
         .frame(width: 330)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
+        .overlay {
+            if showingReleaseNotes {
+                ReleaseNotesView {
+                    showingReleaseNotes = false
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
+        .animation(.easeOut(duration: 0.16), value: showingReleaseNotes)
     }
 
     private func saveAndClose() {
@@ -777,6 +900,160 @@ private struct RefreshSettingsView: View {
         )
         localization.setLanguage(selectedLanguage)
         onDone()
+    }
+}
+
+private enum AppVersionInfo {
+    static var marketingVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? "0.0.0"
+    }
+
+    static var buildNumber: Int {
+        let rawValue = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+            ?? "0"
+        return Int(rawValue) ?? 0
+    }
+
+    static func displayName(isChinese: Bool) -> String {
+        if isChinese {
+            return "V\(marketingVersion)（build \(buildNumber)）"
+        }
+        return "V\(marketingVersion) (build \(buildNumber))"
+    }
+
+    static func marketingVersion(for build: Int) -> String {
+        "\(build / 100).\((build / 10) % 10).\(build % 10)"
+    }
+}
+
+private struct ReleaseNote: Identifiable {
+    let build: Int
+    let chineseItems: [String]
+    let englishItems: [String]
+
+    var id: Int { build }
+    var version: String { AppVersionInfo.marketingVersion(for: build) }
+}
+
+private enum ReleaseNotes {
+    static let all: [ReleaseNote] = [
+        ReleaseNote(
+            build: 21,
+            chineseItems: [
+                "关闭主界面或按 Command + Q 后继续在菜单栏后台监控，并提供首次使用提示。",
+                "菜单栏电源按钮支持完全退出应用。",
+                "根据 Git 提交次数自动同步版本号和 Build。",
+                "在设置中增加当前版本与完整更新记录。",
+            ],
+            englishItems: [
+                "Keep monitoring in the menu bar after closing the dashboard or pressing Command-Q, with a first-use explanation.",
+                "Quit completely from the power button in the menu bar panel.",
+                "Automatically synchronize the version and build number with the Git commit count.",
+                "Show the current version and complete update history in Preferences.",
+            ]
+        ),
+        ReleaseNote(build: 20, chineseItems: ["用单一状态色显示今日用量圆环，避免渐变颜色造成误解。"], englishItems: ["Use one status color for the daily usage ring to avoid misleading gradients."]),
+        ReleaseNote(build: 19, chineseItems: ["自动显示隐藏的 .codex 文件夹，简化沙盒授权。"], englishItems: ["Reveal the hidden .codex folder automatically during sandbox authorization."]),
+        ReleaseNote(build: 18, chineseItems: ["重排首页信息优先级，并加入简体中文与英文界面。"], englishItems: ["Prioritize the most important dashboard data and add Chinese and English interfaces."]),
+        ReleaseNote(build: 17, chineseItems: ["明确服务端与本机数据来源，并增加启动 Codex/ChatGPT 的引导。"], englishItems: ["Clarify server and local data sources and add guidance for opening Codex/ChatGPT."]),
+        ReleaseNote(build: 16, chineseItems: ["增加 Developer ID 签名、DMG 打包与 Apple 公证流程。"], englishItems: ["Add Developer ID signing, DMG packaging, and Apple notarization workflows."]),
+        ReleaseNote(build: 15, chineseItems: ["更新应用图标并记录开发版与发布版的构建策略。"], englishItems: ["Refresh the app icon and document development and release build variants."]),
+        ReleaseNote(build: 14, chineseItems: ["在额度基线可用后自动重新计算结转预算。"], englishItems: ["Recalculate rollover budget automatically when a quota baseline becomes available."]),
+        ReleaseNote(build: 13, chineseItems: ["完成沙盒环境下的 Codex 用量读取验证。"], englishItems: ["Validate Codex usage access inside the App Sandbox."]),
+        ReleaseNote(build: 12, chineseItems: ["改进彩色菜单栏图标。"], englishItems: ["Improve the full-color menu bar icon."]),
+        ReleaseNote(build: 11, chineseItems: ["增加额度窗口基线估算并澄清 Token 日期含义。"], englishItems: ["Add quota-window baseline estimates and clarify token bucket dates."]),
+        ReleaseNote(build: 10, chineseItems: ["增加符合沙盒要求的 Codex 程序与登录资料授权。"], englishItems: ["Add sandbox-safe authorization for the Codex app and sign-in data."]),
+        ReleaseNote(build: 9, chineseItems: ["修正结转上限计算和 Token 日期状态。"], englishItems: ["Correct rollover cap calculations and token date status."]),
+        ReleaseNote(build: 8, chineseItems: ["明确缺失昨日数据时的结转来源和展示方式。"], englishItems: ["Clarify rollover sources and presentation when yesterday's data is unavailable."]),
+        ReleaseNote(build: 7, chineseItems: ["增加每日可持续用量和昨日余量结转预算。"], englishItems: ["Add sustainable daily usage and unused-budget rollover."]),
+        ReleaseNote(build: 6, chineseItems: ["记录免费分发方案和项目网站。"], englishItems: ["Document free distribution and the project website."]),
+        ReleaseNote(build: 5, chineseItems: ["建立 App Store 开发计划和项目文档库。"], englishItems: ["Create the App Store development plan and documentation library."]),
+        ReleaseNote(build: 4, chineseItems: ["统一主窗口和菜单栏中的设置面板。"], englishItems: ["Unify Preferences across the dashboard and menu bar panel."]),
+        ReleaseNote(build: 3, chineseItems: ["修复菜单栏弹窗中的设置交互。"], englishItems: ["Fix Preferences interactions inside the menu bar popover."]),
+        ReleaseNote(build: 2, chineseItems: ["修复设置保存和菜单栏图标。"], englishItems: ["Fix settings persistence and the menu bar icon."]),
+        ReleaseNote(build: 1, chineseItems: ["完成第一个开源版本。"], englishItems: ["Publish the initial open-source version."]),
+    ]
+}
+
+private struct ReleaseNotesView: View {
+    @EnvironmentObject private var localization: AppLocalization
+    let onDone: () -> Void
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.045, green: 0.085, blue: 0.17),
+                    Color(red: 0.025, green: 0.045, blue: 0.10),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L("更新记录", "What's new"))
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(AppVersionInfo.displayName(isChinese: localization.isChinese))
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(.cyan.opacity(0.82))
+                    }
+                    Spacer()
+                    Button(L("完成", "Done"), action: onDone)
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color(red: 0.00, green: 0.58, blue: 0.72))
+                }
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(ReleaseNotes.all) { note in
+                            releaseCard(note)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .padding(20)
+        }
+        .foregroundStyle(.white)
+    }
+
+    private func releaseCard(_ note: ReleaseNote) -> some View {
+        let items = localization.isChinese ? note.chineseItems : note.englishItems
+        return VStack(alignment: .leading, spacing: 7) {
+            Text(versionTitle(note))
+                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(note.build == AppVersionInfo.buildNumber ? .cyan : .white.opacity(0.82))
+
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                Text("\(index + 1). \(item)")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(11)
+        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(
+                    note.build == AppVersionInfo.buildNumber
+                        ? Color.cyan.opacity(0.18)
+                        : Color.white.opacity(0.055),
+                    lineWidth: 1
+                )
+        )
+    }
+
+    private func versionTitle(_ note: ReleaseNote) -> String {
+        if localization.isChinese {
+            return "V\(note.version)（build \(note.build)）"
+        }
+        return "V\(note.version) (build \(note.build))"
     }
 }
 

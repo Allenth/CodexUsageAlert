@@ -13,6 +13,7 @@
 - 菜单栏显示当前周期已用百分比
 - 菜单栏使用 16pt 专用无阴影矢量图标
 - 点击应用图标打开完整仪表盘，同时保留菜单栏入口
+- 关闭主窗口或按 `Command + Q` 后继续在菜单栏后台监控；菜单栏电源按钮用于完全退出
 - 自动刷新频率可设置，默认 15 分钟；也可选择固定时间刷新
 - 显示已用额度、剩余额度、额度周期和重置时间
 - 首页按重要性突出“本机今日增量、今日上限、今日剩余”，周期额度作为辅助信息展示
@@ -26,6 +27,7 @@
 - 周期额度和 Token 数据来自 Codex 服务端；今日增量、昨日结转和个人预算由本机快照计算，新设备从首次刷新开始记录
 - Token 数量单位可独立切换中文（万、亿）或英文（K、M、B）
 - 内置通知测试、通知设置入口和登录时自动启动
+- 设置中显示 `V版本号（build 构建号）` 和完整更新记录
 - 附带 `codex-usage` JSON 命令行读取器
 
 ## 系统要求
@@ -88,6 +90,7 @@ Tests/UsageCoreTests/       核心逻辑测试
 Resources/                  Info.plist 与应用图标
 scripts/build_app.sh        .app 构建及临时/Developer ID 签名脚本
 scripts/build_sandbox_app.sh App 沙盒开发版构建脚本
+scripts/sync_version.sh     按 Git 提交次数同步版本号与 Build
 scripts/build_dmg.sh        Developer ID 签名、DMG 打包与可选公证脚本
 docs/                       开发计划、提示词和项目文档
 ```
@@ -99,6 +102,7 @@ docs/                       开发计划、提示词和项目文档
 - [Mac App Store 开发计划](docs/app-store-development-plan.md)
 - [Mac App Store 上架资料](docs/app-store-metadata.md)
 - [双版本构建与代码管理](docs/build-variants.md)
+- [版本号与更新记录规则](docs/versioning.md)
 - [从零生成 Codex 用量预警的完整开发提示词](docs/development-prompt.md)
 
 ## 分发说明

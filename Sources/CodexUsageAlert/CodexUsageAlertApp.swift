@@ -796,12 +796,7 @@ private struct UsageGauge: View {
             Circle()
                 .trim(from: 0, to: max(0.012, min(progressPercent / 100, 1)))
                 .stroke(
-                    AngularGradient(
-                        colors: [.cyan, Color(red: 0.14, green: 0.68, blue: 1.0), color],
-                        center: .center,
-                        startAngle: .degrees(-90),
-                        endAngle: .degrees(270)
-                    ),
+                    color,
                     style: StrokeStyle(lineWidth: 13, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))

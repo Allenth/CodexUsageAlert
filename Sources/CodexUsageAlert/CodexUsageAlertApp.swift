@@ -713,9 +713,12 @@ private struct DailyBudgetCard: View {
     }
 
     private var sourceDescription: String {
-        let windowDays = UsageMonitor.percent(100 / max(budget?.baseDailyBudgetPercent ?? 100, 0.1))
-        if budget?.hasYesterdayData == true {
-            let sourceDay = budget?.sourceDay ?? "昨日"
+        guard let budget else {
+            return "日均：等待 App Server 额度窗口 · 昨日：暂无快照"
+        }
+        let windowDays = UsageMonitor.percent(100 / max(budget.baseDailyBudgetPercent, 0.1))
+        if budget.hasYesterdayData {
+            let sourceDay = budget.sourceDay ?? "昨日"
             return "日均：App Server 100÷\(windowDays)天 · \(sourceDay)：本机快照估算"
         }
         return "日均：App Server 100÷\(windowDays)天 · 昨日：暂无快照"

@@ -294,3 +294,12 @@ public enum RolloverBudgetCalculator {
         )
     }
 }
+
+public enum RolloverBudgetCachePolicy {
+    public static func shouldReuseCachedBudget(
+        cachedHasYesterdayData: Bool,
+        canDeriveYesterdayDataNow: Bool
+    ) -> Bool {
+        cachedHasYesterdayData || !canDeriveYesterdayDataNow
+    }
+}

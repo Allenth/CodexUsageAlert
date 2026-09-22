@@ -69,6 +69,27 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(budget.yesterdayUsageSource, .windowBaselineEstimate)
     }
 
+    func testMissingRolloverCacheIsRecalculatedWhenBaselineBecomesAvailable() {
+        XCTAssertFalse(
+            RolloverBudgetCachePolicy.shouldReuseCachedBudget(
+                cachedHasYesterdayData: false,
+                canDeriveYesterdayDataNow: true
+            )
+        )
+        XCTAssertTrue(
+            RolloverBudgetCachePolicy.shouldReuseCachedBudget(
+                cachedHasYesterdayData: false,
+                canDeriveYesterdayDataNow: false
+            )
+        )
+        XCTAssertTrue(
+            RolloverBudgetCachePolicy.shouldReuseCachedBudget(
+                cachedHasYesterdayData: true,
+                canDeriveYesterdayDataNow: true
+            )
+        )
+    }
+
     func testDailyCapThresholdIncludesRolloverCap() {
         XCTAssertEqual(
             DailyUsagePolicy.notificationThresholds(dailyCap: 27.3),

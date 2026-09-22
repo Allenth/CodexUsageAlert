@@ -337,15 +337,18 @@ final class UsageMonitor: ObservableObject {
         previousBaselinePercent: Double?
     ) -> DailyBudgetRollover {
         let schemaVersion = 3
+        let cachedBudget: DailyBudgetRollover?
         if defaults.string(forKey: "rolloverBudgetDay") == today,
            defaults.integer(forKey: "rolloverBudgetSchemaVersion") == schemaVersion {
-            return RolloverBudgetCalculator.calculate(
+            cachedBudget = RolloverBudgetCalculator.calculate(
                 windowDurationMins: snapshot.windowDurationMins,
                 yesterdayUsedPercent: defaults.object(forKey: "rolloverYesterdayUsed") as? Double,
                 sourceDay: defaults.string(forKey: "rolloverSourceDay"),
                 yesterdayUsageSource: defaults.string(forKey: "rolloverUsageSource")
                     .flatMap { RolloverUsageSource(rawValue: $0) }
             )
+        } else {
+            cachedBudget = nil
         }
 
         let previousDate = Calendar.current.date(
@@ -368,6 +371,15 @@ final class UsageMonitor: ObservableObject {
             && previousBaselineDay == today
             && previousBaselinePercent != nil
             && windowStartedYesterday
+        let canDeriveYesterdayDataNow = hasRecordedYesterday || canUseWindowBaselineEstimate
+
+        if let cachedBudget,
+           RolloverBudgetCachePolicy.shouldReuseCachedBudget(
+               cachedHasYesterdayData: cachedBudget.hasYesterdayData,
+               canDeriveYesterdayDataNow: canDeriveYesterdayDataNow
+           ) {
+            return cachedBudget
+        }
 
         let yesterdayUsed: Double?
         let usageSource: RolloverUsageSource?

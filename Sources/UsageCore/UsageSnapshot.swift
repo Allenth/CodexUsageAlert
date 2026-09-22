@@ -88,6 +88,35 @@ public struct AccountTokenUsage: Codable, Equatable, Sendable {
             .max()
     }
 
+    public func tokens(
+        on date: Date,
+        calendar: Calendar = .current
+    ) -> Int64? {
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        guard let year = components.year,
+              let month = components.month,
+              let day = components.day else { return nil }
+        let key = String(format: "%04d-%02d-%02d", year, month, day)
+        return dailyUsageBuckets.first(where: { $0.startDate == key })?.tokens
+    }
+
+    public func todayTokens(
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Int64? {
+        tokens(on: now, calendar: calendar)
+    }
+
+    public func yesterdayTokens(
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Int64? {
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: now) else {
+            return nil
+        }
+        return tokens(on: yesterday, calendar: calendar)
+    }
+
     public func latestUsageDate(
         through date: Date = Date(),
         calendar: Calendar = .current
@@ -206,25 +235,88 @@ public enum UsageAlertLevel: Int, Codable, Comparable, Sendable {
 }
 
 public enum DailyUsagePolicy {
-    public static let defaultThresholds: [Double] = [5, 10, 15, 20]
+    public static let defaultThresholds: [Double] = DailyAlertThresholds.default.values
 
     public static func increase(baseline: Double, current: Double) -> Double {
         guard current >= baseline else { return 0 }
         return current - baseline
     }
 
-    public static func level(for increase: Double, dailyCap: Double = 20) -> UsageAlertLevel {
-        if increase >= max(20, dailyCap) { return .cap }
-        if increase >= 15 { return .high }
-        if increase >= 10 { return .reminder }
-        if increase >= 5 { return .notice }
+    public static func level(
+        for increase: Double,
+        dailyCap: Double? = nil,
+        thresholds: DailyAlertThresholds = .default
+    ) -> UsageAlertLevel {
+        let values = thresholds.normalized
+        if increase >= max(values.baseCap, dailyCap ?? values.baseCap) { return .cap }
+        if increase >= values.high { return .high }
+        if increase >= values.reminder { return .reminder }
+        if increase >= values.notice { return .notice }
         return .normal
     }
 
-    public static func notificationThresholds(dailyCap: Double) -> [Double] {
-        let cap = max(20, dailyCap)
-        if cap > 20 { return defaultThresholds + [cap] }
-        return defaultThresholds
+    public static func notificationThresholds(
+        dailyCap: Double,
+        thresholds: DailyAlertThresholds = .default
+    ) -> [Double] {
+        let values = thresholds.normalized
+        let cap = max(values.baseCap, dailyCap)
+        if cap > values.baseCap { return values.values + [cap] }
+        return values.values
+    }
+}
+
+public struct DailyAlertThresholds: Codable, Equatable, Sendable {
+    public static let `default` = DailyAlertThresholds(
+        notice: 5,
+        reminder: 10,
+        high: 15,
+        baseCap: 20
+    )
+
+    public let notice: Double
+    public let reminder: Double
+    public let high: Double
+    public let baseCap: Double
+
+    public init(notice: Double, reminder: Double, high: Double, baseCap: Double) {
+        self.notice = notice
+        self.reminder = reminder
+        self.high = high
+        self.baseCap = baseCap
+    }
+
+    public var normalized: DailyAlertThresholds {
+        let cap = min(100, max(0.5, baseCap))
+        let first = min(cap, max(0.5, notice))
+        let second = min(cap, max(first, reminder))
+        let third = min(cap, max(second, high))
+        return DailyAlertThresholds(
+            notice: first,
+            reminder: second,
+            high: third,
+            baseCap: cap
+        )
+    }
+
+    public var values: [Double] {
+        let values = normalized
+        return [values.notice, values.reminder, values.high, values.baseCap]
+    }
+
+    public func scaled(toBaseCap newBaseCap: Double) -> DailyAlertThresholds {
+        let current = normalized
+        let newCap = min(100, max(0.5, newBaseCap))
+        let ratio = newCap / current.baseCap
+        func rounded(_ value: Double) -> Double {
+            (value * ratio * 10).rounded() / 10
+        }
+        return DailyAlertThresholds(
+            notice: rounded(current.notice),
+            reminder: rounded(current.reminder),
+            high: rounded(current.high),
+            baseCap: newCap
+        ).normalized
     }
 }
 

@@ -9,6 +9,22 @@
 
 ## 进行中版本
 
+### 2026-09-23 01:58:09 CST (UTC+08:00) — Token 每日用量与自定义预警阈值
+
+- 版本：`0.2.2`（Build `22`）。
+- 完成内容：Token 卡片改为显示今日、昨日和本月累计；每日柱状图支持悬停查看
+  日期与精确 Token 数；新增四档阈值独立设置，并在基础上限变化时按当前比例缩放
+  前三档；将“日桶”等后端术语替换为自然中文，并明确区分服务端统计日期与
+  macOS 本机系统日期。
+- 主要文件：`Sources/UsageCore/UsageSnapshot.swift`、
+  `Sources/CodexUsageAlert/UsageMonitor.swift`、
+  `Sources/CodexUsageAlert/CodexUsageAlertApp.swift`、测试、更新日志和用户文档。
+- 验证：16 项 Swift 测试全部通过；沙盒 Release 构建和代码签名验证通过；人工验证
+  Token 三项指标、缺失今日数据的“待更新”说明、柱状图悬停详情、阈值设置界面，
+  以及基础上限 15% 对应 `3.8 / 7.5 / 11.3 / 15` 的比例结果。
+- 分支：`app-store/sandbox-prototype`。
+- 提交：pending commit。
+
 ### 2026-09-23 01:20:45 CST (UTC+08:00) — 后台驻留、版本管理与应用内更新记录
 
 - 版本：`0.2.1`（Build `21`）。

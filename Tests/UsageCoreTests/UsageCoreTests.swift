@@ -35,6 +35,25 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(DailyUsagePolicy.level(for: 27.3, dailyCap: 27.3), .cap)
     }
 
+    func testCustomDailyAlertLevelsAndProportionalScaling() {
+        let thresholds = DailyAlertThresholds.default.scaled(toBaseCap: 15)
+        XCTAssertEqual(thresholds.notice, 3.8, accuracy: 0.0001)
+        XCTAssertEqual(thresholds.reminder, 7.5, accuracy: 0.0001)
+        XCTAssertEqual(thresholds.high, 11.3, accuracy: 0.0001)
+        XCTAssertEqual(thresholds.baseCap, 15, accuracy: 0.0001)
+        XCTAssertEqual(
+            DailyUsagePolicy.level(for: 7.5, dailyCap: 15, thresholds: thresholds),
+            .reminder
+        )
+        XCTAssertEqual(
+            DailyUsagePolicy.notificationThresholds(
+                dailyCap: 18,
+                thresholds: thresholds
+            ),
+            [3.8, 7.5, 11.3, 15, 18]
+        )
+    }
+
     func testQuotaResetDoesNotProduceNegativeDailyUsage() {
         XCTAssertEqual(DailyUsagePolicy.increase(baseline: 90, current: 2), 0)
     }
@@ -184,6 +203,30 @@ final class UsageCoreTests: XCTestCase {
             usage.latestUsageDate(through: referenceDate, calendar: calendar),
             "2026-09-20"
         )
+    }
+
+    func testTodayAndYesterdayTokenBucketsUseRawServerDates() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = calendar.date(
+            from: DateComponents(year: 2026, month: 9, day: 23)
+        )!
+        let usage = AccountTokenUsage(
+            summary: TokenUsageSummary(
+                lifetimeTokens: nil,
+                peakDailyTokens: nil,
+                longestRunningTurnSec: nil,
+                currentStreakDays: nil,
+                longestStreakDays: nil
+            ),
+            dailyUsageBuckets: [
+                DailyTokenUsage(startDate: "2026-09-22", tokens: 300),
+                DailyTokenUsage(startDate: "2026-09-23", tokens: 900),
+            ]
+        )
+
+        XCTAssertEqual(usage.todayTokens(now: referenceDate, calendar: calendar), 900)
+        XCTAssertEqual(usage.yesterdayTokens(now: referenceDate, calendar: calendar), 300)
     }
 
     func testResolvesUserSelectedCodexExecutable() throws {

@@ -338,7 +338,7 @@ private struct UsagePopover: View {
                     UsageGauge(
                         progressPercent: dailyProgressPercent,
                         primaryPercent: monitor.dailyIncrease,
-                        label: L("本机今日增量", "Today's local increase"),
+                        label: L("今日已用", "Used today"),
                         secondaryText: L(
                             "今日上限 \(UsageMonitor.percent(todayCap))%",
                             "Daily cap \(UsageMonitor.percent(todayCap))%"
@@ -372,7 +372,8 @@ private struct UsagePopover: View {
                 DailyBudgetCard(
                     dailyIncrease: monitor.dailyIncrease,
                     statusColor: statusColor,
-                    budget: monitor.rolloverBudget
+                    budget: monitor.rolloverBudget,
+                    thresholds: monitor.alertThresholds
                 )
 
                 if let tokenUsage = monitor.tokenUsage {
@@ -401,13 +402,20 @@ private struct UsagePopover: View {
                                 "\(UsageMonitor.percent(snapshot.windowDays)) 天",
                                 "\(UsageMonitor.percent(snapshot.windowDays)) days"
                             ),
-                            detail: L("滚动额度", "Rolling window"),
+                            detail: L("滚动周期", "Rolling window"),
                             label: L("额度周期", "Usage window")
                         )
                         StatTile(
                             icon: "bell.badge.fill",
-                            value: "5 · 10 · 15",
-                            detail: L("20% 基础上限", "20% base cap"),
+                            value: [
+                                monitor.alertThresholds.notice,
+                                monitor.alertThresholds.reminder,
+                                monitor.alertThresholds.high,
+                            ].map(UsageMonitor.percent).joined(separator: " · "),
+                            detail: L(
+                                "\(UsageMonitor.percent(monitor.alertThresholds.baseCap))% 基础上限",
+                                "\(UsageMonitor.percent(monitor.alertThresholds.baseCap))% base cap"
+                            ),
                             label: L("预警刻度", "Alert levels")
                         )
                     }
@@ -576,7 +584,7 @@ private struct UsagePopover: View {
         HStack(spacing: 5) {
             Image(systemName: "lock.shield.fill")
             Text(L(
-                "额度来自 Codex 服务端 · 日增量本机计算",
+                "额度来自 Codex 服务端 · 今日用量由本机记录计算",
                 "Quota from Codex · Daily increase calculated locally"
             ))
                 .lineLimit(1)
@@ -628,7 +636,7 @@ private struct UsagePopover: View {
     }
 
     private var todayCap: Double {
-        monitor.rolloverBudget?.todayAvailablePercent ?? 20
+        monitor.rolloverBudget?.todayAvailablePercent ?? monitor.alertThresholds.baseCap
     }
 
     private var todayRemaining: Double {
@@ -649,8 +657,10 @@ private struct RefreshSettingsView: View {
     @State private var selectedSchedule: RefreshSchedule
     @State private var selectedDailyRefreshTime: Date
     @State private var selectedTokenUnitStyle: TokenUnitStyle
+    @State private var selectedAlertThresholds: DailyAlertThresholds
     @State private var selectedLanguage: AppLanguage
     @State private var showingReleaseNotes = false
+    @State private var showingThresholdSettings = false
 
     init(monitor: UsageMonitor, onDone: @escaping () -> Void) {
         self.monitor = monitor
@@ -658,6 +668,7 @@ private struct RefreshSettingsView: View {
         _selectedSchedule = State(initialValue: monitor.refreshSchedule)
         _selectedDailyRefreshTime = State(initialValue: monitor.dailyRefreshTime)
         _selectedTokenUnitStyle = State(initialValue: monitor.tokenUnitStyle)
+        _selectedAlertThresholds = State(initialValue: monitor.alertThresholds)
         _selectedLanguage = State(initialValue: AppLocalization.shared.selection)
     }
 
@@ -768,6 +779,30 @@ private struct RefreshSettingsView: View {
                     .labelsHidden()
                     .pickerStyle(.segmented)
                 }
+
+                Button {
+                    showingThresholdSettings = true
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: "slider.horizontal.3")
+                            .foregroundStyle(.cyan)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L("每日额度与预警阈值", "Daily cap and alert thresholds"))
+                                .font(.system(size: 10.5, weight: .medium))
+                            Text(thresholdSummary)
+                                .font(.system(size: 9, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.45))
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.35))
+                    }
+                    .foregroundStyle(.white.opacity(0.82))
+                    .padding(10)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
+                }
+                .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L("Codex 数据来源", "Codex data source"))
@@ -882,7 +917,25 @@ private struct RefreshSettingsView: View {
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .overlay {
-            if showingReleaseNotes {
+            if showingThresholdSettings {
+                ThresholdSettingsView(
+                    thresholds: selectedAlertThresholds,
+                    onSave: { thresholds in
+                        selectedAlertThresholds = thresholds
+                        monitor.applySettings(
+                            refreshSchedule: selectedSchedule,
+                            dailyRefreshTime: selectedDailyRefreshTime,
+                            tokenUnitStyle: selectedTokenUnitStyle,
+                            alertThresholds: thresholds
+                        )
+                        showingThresholdSettings = false
+                    },
+                    onCancel: {
+                        showingThresholdSettings = false
+                    }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            } else if showingReleaseNotes {
                 ReleaseNotesView {
                     showingReleaseNotes = false
                 }
@@ -890,16 +943,235 @@ private struct RefreshSettingsView: View {
             }
         }
         .animation(.easeOut(duration: 0.16), value: showingReleaseNotes)
+        .animation(.easeOut(duration: 0.16), value: showingThresholdSettings)
     }
 
     private func saveAndClose() {
         monitor.applySettings(
             refreshSchedule: selectedSchedule,
             dailyRefreshTime: selectedDailyRefreshTime,
-            tokenUnitStyle: selectedTokenUnitStyle
+            tokenUnitStyle: selectedTokenUnitStyle,
+            alertThresholds: selectedAlertThresholds
         )
         localization.setLanguage(selectedLanguage)
         onDone()
+    }
+
+    private var thresholdSummary: String {
+        selectedAlertThresholds.values
+            .map(UsageMonitor.percent)
+            .joined(separator: " · ") + "%"
+    }
+}
+
+private struct ThresholdSettingsView: View {
+    let onSave: (DailyAlertThresholds) -> Void
+    let onCancel: () -> Void
+    @State private var notice: Double
+    @State private var reminder: Double
+    @State private var high: Double
+    @State private var baseCap: Double
+    @State private var previousBaseCap: Double
+    @State private var noticeRatio: Double
+    @State private var reminderRatio: Double
+    @State private var highRatio: Double
+
+    init(
+        thresholds: DailyAlertThresholds,
+        onSave: @escaping (DailyAlertThresholds) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
+        let values = thresholds.normalized
+        self.onSave = onSave
+        self.onCancel = onCancel
+        _notice = State(initialValue: values.notice)
+        _reminder = State(initialValue: values.reminder)
+        _high = State(initialValue: values.high)
+        _baseCap = State(initialValue: values.baseCap)
+        _previousBaseCap = State(initialValue: values.baseCap)
+        _noticeRatio = State(initialValue: values.notice / values.baseCap)
+        _reminderRatio = State(initialValue: values.reminder / values.baseCap)
+        _highRatio = State(initialValue: values.high / values.baseCap)
+    }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.045, green: 0.085, blue: 0.17),
+                    Color(red: 0.025, green: 0.045, blue: 0.10),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L("每日额度与预警阈值", "Daily cap and alert thresholds"))
+                            .font(.system(size: 15.5, weight: .semibold))
+                        Text(L(
+                            "单位为用量百分比，可输入 0.5–100",
+                            "Quota percentage points · enter 0.5–100"
+                        ))
+                            .font(.system(size: 9.5))
+                            .foregroundStyle(.white.opacity(0.46))
+                    }
+                    Spacer()
+                    Button(L("取消", "Cancel"), action: onCancel)
+                        .buttonStyle(.borderless)
+                }
+
+                VStack(spacing: 9) {
+                    ThresholdEditorRow(
+                        label: L("注意", "Notice"),
+                        value: noticeBinding,
+                        tint: .cyan
+                    )
+                    ThresholdEditorRow(
+                        label: L("提醒", "Reminder"),
+                        value: reminderBinding,
+                        tint: .yellow
+                    )
+                    ThresholdEditorRow(
+                        label: L("偏高", "High"),
+                        value: highBinding,
+                        tint: .orange
+                    )
+                    ThresholdEditorRow(
+                        label: L("基础上限", "Base cap"),
+                        value: $baseCap,
+                        tint: .red
+                    )
+                }
+
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(.cyan.opacity(0.8))
+                    Text(L(
+                        "修改基础上限时，前三档会自动等比例缩放；随后仍可单独调整。保存时会保证四档从小到大排列。",
+                        "Changing the base cap scales the first three levels proportionally. Each level can still be edited separately; values are ordered when saved."
+                    ))
+                }
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.5))
+
+                HStack {
+                    Button(L("按比例重置", "Reset proportions")) {
+                        noticeRatio = 0.25
+                        reminderRatio = 0.5
+                        highRatio = 0.75
+                        scaleThresholds(to: baseCap, force: true)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+
+                    Button(L("保存", "Save")) {
+                        onSave(currentThresholds.normalized)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(red: 0.00, green: 0.58, blue: 0.72))
+                    .keyboardShortcut(.defaultAction)
+                }
+            }
+            .foregroundStyle(.white)
+            .padding(20)
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .frame(width: 330)
+        .preferredColorScheme(.dark)
+        .onChange(of: baseCap) { newValue in
+            scaleThresholds(to: newValue)
+        }
+    }
+
+    private var currentThresholds: DailyAlertThresholds {
+        DailyAlertThresholds(
+            notice: notice,
+            reminder: reminder,
+            high: high,
+            baseCap: baseCap
+        )
+    }
+
+    private var noticeBinding: Binding<Double> {
+        Binding(
+            get: { notice },
+            set: { newValue in
+                notice = newValue
+                if baseCap > 0 { noticeRatio = newValue / baseCap }
+            }
+        )
+    }
+
+    private var reminderBinding: Binding<Double> {
+        Binding(
+            get: { reminder },
+            set: { newValue in
+                reminder = newValue
+                if baseCap > 0 { reminderRatio = newValue / baseCap }
+            }
+        )
+    }
+
+    private var highBinding: Binding<Double> {
+        Binding(
+            get: { high },
+            set: { newValue in
+                high = newValue
+                if baseCap > 0 { highRatio = newValue / baseCap }
+            }
+        )
+    }
+
+    private func scaleThresholds(to newBaseCap: Double, force: Bool = false) {
+        guard previousBaseCap > 0,
+              newBaseCap >= 0.5,
+              newBaseCap <= 100,
+              force || newBaseCap != previousBaseCap else { return }
+        notice = roundedThreshold(newBaseCap * noticeRatio)
+        reminder = roundedThreshold(newBaseCap * reminderRatio)
+        high = roundedThreshold(newBaseCap * highRatio)
+        previousBaseCap = newBaseCap
+    }
+
+    private func roundedThreshold(_ value: Double) -> Double {
+        min(100, max(0.5, (value * 10).rounded() / 10))
+    }
+}
+
+private struct ThresholdEditorRow: View {
+    let label: String
+    @Binding var value: Double
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(tint)
+                .frame(width: 7, height: 7)
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            TextField(
+                "",
+                value: $value,
+                format: .number.precision(.fractionLength(0...1))
+            )
+            .textFieldStyle(.roundedBorder)
+            .multilineTextAlignment(.trailing)
+            .frame(width: 62)
+            Text("%")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.48))
+            Stepper("", value: $value, in: 0.5...100, step: 0.5)
+                .labelsHidden()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
     }
 }
 
@@ -939,6 +1211,21 @@ private struct ReleaseNote: Identifiable {
 private enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            build: 22,
+            chineseItems: [
+                "Token 卡片改为显示今日、昨日和本月累计，并为柱状图增加悬停详情。",
+                "支持分别设置注意、提醒、偏高和基础上限四档额度阈值。",
+                "修改基础上限时自动等比例缩放前三档，同时允许继续单独调整。",
+                "统一优化每日统计、周期起点和本机记录等中文说明。",
+            ],
+            englishItems: [
+                "Show today, yesterday, and month-to-date tokens with hover details on chart bars.",
+                "Configure Notice, Reminder, High, and Base Cap thresholds independently.",
+                "Scale the first three thresholds proportionally when the base cap changes, while keeping individual editing available.",
+                "Clarify the sustainable average label as the quota-window daily average.",
+            ]
+        ),
+        ReleaseNote(
             build: 21,
             chineseItems: [
                 "关闭主界面或按 Command + Q 后继续在菜单栏后台监控，并提供首次使用提示。",
@@ -962,7 +1249,7 @@ private enum ReleaseNotes {
         ReleaseNote(build: 14, chineseItems: ["在额度基线可用后自动重新计算结转预算。"], englishItems: ["Recalculate rollover budget automatically when a quota baseline becomes available."]),
         ReleaseNote(build: 13, chineseItems: ["完成沙盒环境下的 Codex 用量读取验证。"], englishItems: ["Validate Codex usage access inside the App Sandbox."]),
         ReleaseNote(build: 12, chineseItems: ["改进彩色菜单栏图标。"], englishItems: ["Improve the full-color menu bar icon."]),
-        ReleaseNote(build: 11, chineseItems: ["增加额度窗口基线估算并澄清 Token 日期含义。"], englishItems: ["Add quota-window baseline estimates and clarify token bucket dates."]),
+        ReleaseNote(build: 11, chineseItems: ["增加周期起点估算并澄清 Token 日期含义。"], englishItems: ["Add quota-window baseline estimates and clarify token bucket dates."]),
         ReleaseNote(build: 10, chineseItems: ["增加符合沙盒要求的 Codex 程序与登录资料授权。"], englishItems: ["Add sandbox-safe authorization for the Codex app and sign-in data."]),
         ReleaseNote(build: 9, chineseItems: ["修正结转上限计算和 Token 日期状态。"], englishItems: ["Correct rollover cap calculations and token date status."]),
         ReleaseNote(build: 8, chineseItems: ["明确缺失昨日数据时的结转来源和展示方式。"], englishItems: ["Clarify rollover sources and presentation when yesterday's data is unavailable."]),
@@ -1144,10 +1431,11 @@ private struct DailyBudgetCard: View {
     let dailyIncrease: Double
     let statusColor: Color
     let budget: DailyBudgetRollover?
+    let thresholds: DailyAlertThresholds
     @EnvironmentObject private var localization: AppLocalization
 
     private var cap: Double {
-        max(1, budget?.todayAvailablePercent ?? 20)
+        max(1, budget?.todayAvailablePercent ?? thresholds.baseCap)
     }
 
     var body: some View {
@@ -1158,8 +1446,8 @@ private struct DailyBudgetCard: View {
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(.white)
                     Text(L(
-                        "按本机快照差值累计，基础上限 20 个百分点",
-                        "Local snapshot difference · 20-point base cap"
+                        "根据本机记录计算，基础上限 \(UsageMonitor.percent(thresholds.baseCap))%",
+                        "Local snapshot difference · \(UsageMonitor.percent(thresholds.baseCap))-point base cap"
                     ))
                         .font(.system(size: 9.5))
                         .foregroundStyle(.white.opacity(0.42))
@@ -1194,7 +1482,7 @@ private struct DailyBudgetCard: View {
                         )
                         .shadow(color: statusColor.opacity(0.38), radius: 5)
 
-                    ForEach([5.0, 10.0, 15.0, 20.0], id: \.self) { threshold in
+                    ForEach(thresholds.values, id: \.self) { threshold in
                         Circle()
                             .fill(Color.white.opacity(0.35))
                             .frame(width: 5, height: 5)
@@ -1211,10 +1499,22 @@ private struct DailyBudgetCard: View {
             .frame(height: 8)
 
             HStack(spacing: 0) {
-                RuleLabel(value: "5", label: L("注意", "Notice"))
-                RuleLabel(value: "10", label: L("提醒", "Alert"))
-                RuleLabel(value: "15", label: L("偏高", "High"))
-                RuleLabel(value: "20", label: L("基础上限", "Base cap"))
+                RuleLabel(
+                    value: UsageMonitor.percent(thresholds.notice),
+                    label: L("注意", "Notice")
+                )
+                RuleLabel(
+                    value: UsageMonitor.percent(thresholds.reminder),
+                    label: L("提醒", "Alert")
+                )
+                RuleLabel(
+                    value: UsageMonitor.percent(thresholds.high),
+                    label: L("偏高", "High")
+                )
+                RuleLabel(
+                    value: UsageMonitor.percent(thresholds.baseCap),
+                    label: L("基础上限", "Base cap")
+                )
             }
 
             Divider().overlay(Color.white.opacity(0.07))
@@ -1222,7 +1522,7 @@ private struct DailyBudgetCard: View {
             HStack(spacing: 0) {
                 BudgetInputValue(
                     value: formatted(budget?.sustainableDailyBudgetPercent),
-                    label: L("周日均", "Sustainable")
+                    label: L("每日建议", "Sustainable")
                 )
                 BudgetInputValue(
                     value: yesterdayUsedValue,
@@ -1235,11 +1535,11 @@ private struct DailyBudgetCard: View {
                     label: L("昨日余量", "Carryover")
                 )
                 BudgetInputValue(
-                    value: formatted(budget?.baseDailyCapPercent ?? 20),
+                    value: formatted(budget?.baseDailyCapPercent ?? thresholds.baseCap),
                     label: L("基础上限", "Base cap")
                 )
                 BudgetInputValue(
-                    value: formatted(budget?.todayAvailablePercent ?? 20),
+                    value: formatted(budget?.todayAvailablePercent ?? thresholds.baseCap),
                     label: L("今日上限", "Today cap")
                 )
             }
@@ -1282,34 +1582,34 @@ private struct DailyBudgetCard: View {
     private var sourceDescription: String {
         guard let budget else {
             return L(
-                "周日均：等待 App Server · 昨日：暂无本机快照 · 20%：个人规则",
-                "Sustainable: waiting for App Server · Yesterday: no local snapshot · 20%: personal rule"
+                "每日建议：等待服务端 · 昨日：暂无本机记录 · \(baseCapText)：个人设置",
+                "Sustainable: waiting for App Server · Yesterday: no local snapshot · \(baseCapText): personal rule"
             )
         }
         if budget.hasYesterdayData {
             let sourceDay = budget.sourceDay ?? L("昨日", "Yesterday")
             if budget.yesterdayUsageSource == .windowBaselineEstimate {
                 return L(
-                    "周日均：App Server · \(sourceDay)：窗口基线估算 · 20%：个人规则",
-                    "Sustainable: App Server · \(sourceDay): window baseline estimate · 20%: personal rule"
+                    "每日建议：服务端 · \(sourceDay)：根据周期起点估算 · \(baseCapText)：个人设置",
+                    "Sustainable: App Server · \(sourceDay): window baseline estimate · \(baseCapText): personal rule"
                 )
             }
             return L(
-                "周日均：App Server · \(sourceDay)：本机日快照 · 20%：个人规则",
-                "Sustainable: App Server · \(sourceDay): local daily snapshot · 20%: personal rule"
+                "每日建议：服务端 · \(sourceDay)：本机每日记录 · \(baseCapText)：个人设置",
+                "Sustainable: App Server · \(sourceDay): local daily snapshot · \(baseCapText): personal rule"
             )
         }
         return L(
-            "周日均：App Server · 昨日：暂无本机快照 · 20%：个人规则",
-            "Sustainable: App Server · Yesterday: no local snapshot · 20%: personal rule"
+            "每日建议：服务端 · 昨日：暂无本机记录 · \(baseCapText)：个人设置",
+            "Sustainable: App Server · Yesterday: no local snapshot · \(baseCapText): personal rule"
         )
     }
 
     private var formulaDescription: String {
         guard let budget, budget.hasYesterdayData else {
             return L(
-                "今日上限 20%；此设备取得完整昨日快照后，再加上昨日日均未用部分。",
-                "Today's cap is 20%. Unused sustainable budget rolls over after a full local snapshot day."
+                "今日上限 \(baseCapText)；此设备有完整的昨日记录后，再加上昨日未用的建议额度。",
+                "Today's cap is \(baseCapText). Unused sustainable budget rolls over after a full local snapshot day."
             )
         }
         return L(
@@ -1321,13 +1621,13 @@ private struct DailyBudgetCard: View {
     private var sourceHelp: String {
         if budget?.yesterdayUsageSource == .windowBaselineEstimate {
             return L(
-                "周日均来自 account/rateLimits/read（100 ÷ 窗口天数）。当前额度窗口从昨日开始，因此用今天首次快照的周累计基线估算昨日已用；该估算可能包含今天首次快照前的用量。20% 是你的个人规则。",
-                "Sustainable pace comes from account/rateLimits/read (100 ÷ window days). Because this window began yesterday, yesterday is estimated from today's first window baseline and may include early-today usage. The 20% cap is your personal rule."
+                "每日建议来自服务端额度周期（100 ÷ 周期天数）。当前周期从昨日开始，因此使用今天首次记录的周期累计值估算昨日用量；该估算可能包含今天首次记录前的用量。\(baseCapText) 是你的个人设置。",
+                "Sustainable pace comes from account/rateLimits/read (100 ÷ window days). Because this window began yesterday, yesterday is estimated from today's first window baseline and may include early-today usage. The \(baseCapText) cap is your personal rule."
             )
         }
         return L(
-            "周日均来自 account/rateLimits/read（100 ÷ 窗口天数）；昨日已用来自本机同日额度快照差值；20% 是你的个人每日基础上限，不是 OpenAI 官方硬限制。缺少昨日快照时不按 0 计算，也不结转。",
-            "Sustainable pace comes from account/rateLimits/read (100 ÷ window days). Yesterday comes from local snapshot differences. The 20% base cap is your personal rule, not an official OpenAI hard limit. Missing days are neither treated as zero nor rolled over."
+            "每日建议来自服务端额度周期（100 ÷ 周期天数）；昨日已用根据本机同一天的用量记录计算。\(baseCapText) 是你的个人每日基础上限，不是 OpenAI 官方硬限制；缺少昨日记录时不会按 0 计算或结转。",
+            "Sustainable pace comes from account/rateLimits/read (100 ÷ window days). Yesterday comes from local snapshot differences. The \(baseCapText) base cap is your personal rule, not an official OpenAI hard limit. Missing days are neither treated as zero nor rolled over."
         )
     }
 
@@ -1342,6 +1642,10 @@ private struct DailyBudgetCard: View {
     private func formatted(_ value: Double?) -> String {
         guard let value else { return "--" }
         return "\(UsageMonitor.percent(value))%"
+    }
+
+    private var baseCapText: String {
+        "\(UsageMonitor.percent(thresholds.baseCap))%"
     }
 }
 
@@ -1384,6 +1688,7 @@ private struct TokenUsageCard: View {
     let usage: AccountTokenUsage
     let unitStyle: TokenUnitStyle
     @EnvironmentObject private var localization: AppLocalization
+    @State private var hoveredBucketID: String?
 
     private var recentBuckets: [DailyTokenUsage] {
         Array(usage.dailyUsageBuckets.suffix(7))
@@ -1395,6 +1700,11 @@ private struct TokenUsageCard: View {
 
     private var latestUsageDate: String? {
         usage.latestUsageDate()
+    }
+
+    private var latestBucket: DailyTokenUsage? {
+        guard let latestUsageDate else { return nil }
+        return usage.dailyUsageBuckets.first(where: { $0.startDate == latestUsageDate })
     }
 
     private var todayKey: String {
@@ -1438,6 +1748,23 @@ private struct TokenUsageCard: View {
 
             HStack(spacing: 0) {
                 TokenMetric(
+                    value: usage.todayTokens().map {
+                        TokenCountFormatter.compact($0, style: unitStyle)
+                    } ?? L("待更新", "Pending"),
+                    label: L("今日用量", "Today"),
+                    exactValue: usage.todayTokens()
+                )
+                Divider().overlay(Color.white.opacity(0.08))
+                TokenMetric(
+                    value: TokenCountFormatter.compact(
+                        usage.yesterdayTokens(),
+                        style: unitStyle
+                    ),
+                    label: L("昨日用量", "Yesterday"),
+                    exactValue: usage.yesterdayTokens()
+                )
+                Divider().overlay(Color.white.opacity(0.08))
+                TokenMetric(
                     value: TokenCountFormatter.compact(
                         usage.monthToDateTokens(),
                         style: unitStyle
@@ -1445,33 +1772,16 @@ private struct TokenUsageCard: View {
                     label: monthToDateLabel,
                     exactValue: usage.monthToDateTokens()
                 )
-                Divider().overlay(Color.white.opacity(0.08))
-                TokenMetric(
-                    value: TokenCountFormatter.compact(
-                        usage.peakDailyTokensThisMonth(),
-                        style: unitStyle
-                    ),
-                    label: L("本月单日峰值", "Peak day this month"),
-                    exactValue: usage.peakDailyTokensThisMonth()
-                )
-                Divider().overlay(Color.white.opacity(0.08))
-                TokenMetric(
-                    value: usage.summary.currentStreakDays.map {
-                        L("\($0) 天", "\($0) days")
-                    } ?? "--",
-                    label: streakLabel,
-                    exactValue: nil
-                )
             }
             .frame(height: 35)
 
-            if isTodayBucketMissing, let latestUsageDate {
+            if isTodayBucketMissing, let latestUsageDate, let latestBucket {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "clock.badge.exclamationmark.fill")
                         .foregroundStyle(.orange.opacity(0.9))
                     Text(L(
-                        "服务端日桶截至 \(shortDate(latestUsageDate))；本地北京时间为 \(shortDate(todayKey))。官方未声明 startDate 时区，暂不换算，也不把本地今天补为 0。",
-                        "Server daily buckets end at \(shortDate(latestUsageDate)); the local date is \(shortDate(todayKey)). The startDate timezone is undocumented, so dates are not converted and today is not filled with zero."
+                        "服务端最新每日统计为 \(shortDate(latestUsageDate))，用量 \(TokenCountFormatter.compact(latestBucket.tokens, style: unitStyle))；本机系统日期为 \(shortDate(todayKey))。服务端未说明统计日期所属时区，因此不转换日期，也不会把缺失的今日数据记为 0。",
+                        "The latest server daily total is \(TokenCountFormatter.compact(latestBucket.tokens, style: unitStyle)) for \(shortDate(latestUsageDate)); the local date is \(shortDate(todayKey)). Its timezone is undocumented, so dates are not converted and today is not filled with zero."
                     ))
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1482,8 +1792,8 @@ private struct TokenUsageCard: View {
                 .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
                 .help(
                     L(
-                        "数据源：Codex App Server account/usage/read。dailyUsageBuckets.startDate 原值为 \(latestUsageDate)，本机北京时间日期为 \(todayKey)。OpenAI 文档仅将其定义为每日分桶日期，未指定时区。",
-                        "Source: Codex App Server account/usage/read. dailyUsageBuckets.startDate is \(latestUsageDate); the local date is \(todayKey). OpenAI defines it as a daily bucket date without documenting its timezone."
+                        "数据源：Codex App Server account/usage/read。服务端 dailyUsageBuckets.startDate 原值为 \(latestUsageDate)，Token 为 \(latestBucket.tokens.formatted())；本机系统日期为 \(todayKey)，官方文档未说明该日期所属时区。",
+                        "Source: Codex App Server account/usage/read. dailyUsageBuckets.startDate is \(latestUsageDate) with \(latestBucket.tokens.formatted()) tokens; the local date is \(todayKey), and the server date timezone is undocumented."
                     )
                 )
             }
@@ -1498,32 +1808,53 @@ private struct TokenUsageCard: View {
                 .frame(maxWidth: .infinity, minHeight: 48)
             } else {
                 GeometryReader { geometry in
-                    HStack(alignment: .bottom, spacing: 7) {
-                        ForEach(recentBuckets) { bucket in
-                            VStack(spacing: 4) {
-                                Spacer(minLength: 0)
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [.cyan.opacity(0.65), .cyan],
-                                            startPoint: .bottom,
-                                            endPoint: .top
+                    ZStack(alignment: .topLeading) {
+                        HStack(alignment: .bottom, spacing: 7) {
+                            ForEach(recentBuckets) { bucket in
+                                VStack(spacing: 4) {
+                                    Spacer(minLength: 0)
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(
+                                            LinearGradient(
+                                                colors: [.cyan.opacity(0.65), .cyan],
+                                                startPoint: .bottom,
+                                                endPoint: .top
+                                            )
                                         )
-                                    )
-                                    .frame(
-                                        height: max(
-                                            4,
-                                            (geometry.size.height - 17)
-                                                * CGFloat(Double(bucket.tokens) / maximumTokens)
+                                        .frame(
+                                            height: max(
+                                                4,
+                                                (geometry.size.height - 17)
+                                                    * CGFloat(Double(bucket.tokens) / maximumTokens)
+                                            )
                                         )
-                                    )
-                                    .shadow(color: .cyan.opacity(0.22), radius: 3)
-                                Text(shortDate(bucket.startDate))
-                                    .font(.system(size: 7.5, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.white.opacity(0.35))
+                                        .shadow(color: .cyan.opacity(0.22), radius: 3)
+                                    Text(shortDate(bucket.startDate))
+                                        .font(.system(size: 7.5, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.35))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
+                                .opacity(hoveredBucketID == nil || hoveredBucketID == bucket.id ? 1 : 0.48)
+                                .onHover { isHovering in
+                                    withAnimation(.easeOut(duration: 0.12)) {
+                                        hoveredBucketID = isHovering ? bucket.id : nil
+                                    }
+                                }
                             }
-                            .frame(maxWidth: .infinity)
-                            .help("\(bucket.startDate): \(bucket.tokens.formatted()) tokens")
+                        }
+
+                        if let hoveredBucket,
+                           let index = recentBuckets.firstIndex(where: { $0.id == hoveredBucket.id }) {
+                            TokenBarTooltip(bucket: hoveredBucket, unitStyle: unitStyle)
+                                .frame(width: 126)
+                                .offset(
+                                    x: tooltipOffset(index: index, chartWidth: geometry.size.width),
+                                    y: 0
+                                )
+                                .allowsHitTesting(false)
+                                .zIndex(2)
+                                .transition(.opacity.combined(with: .scale(scale: 0.96)))
                         }
                     }
                 }
@@ -1535,20 +1866,21 @@ private struct TokenUsageCard: View {
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.cyan.opacity(0.12), lineWidth: 1))
     }
 
-    private var streakLabel: String {
-        guard let longest = usage.summary.longestStreakDays else {
-            return L("连续使用", "Current streak")
-        }
-        return L("连续 · 最长 \(longest) 天", "Streak · best \(longest) days")
+    private var hoveredBucket: DailyTokenUsage? {
+        recentBuckets.first(where: { $0.id == hoveredBucketID })
     }
 
     private var monthToDateLabel: String {
-        guard let latestUsageDate else { return L("本月暂无日汇总", "No monthly summary") }
-        if latestUsageDate == todayKey { return L("本月截至今日", "Month to date") }
-        return L(
-            "本月·服务端至 \(shortDate(latestUsageDate))",
-            "Month · server through \(shortDate(latestUsageDate))"
-        )
+        latestUsageDate == nil
+            ? L("本月暂无日汇总", "No monthly summary")
+            : L("本月累计", "Month to date")
+    }
+
+    private func tooltipOffset(index: Int, chartWidth: CGFloat) -> CGFloat {
+        let tooltipWidth: CGFloat = 126
+        let count = max(recentBuckets.count, 1)
+        let center = (CGFloat(index) + 0.5) * chartWidth / CGFloat(count)
+        return min(max(0, center - tooltipWidth / 2), max(0, chartWidth - tooltipWidth))
     }
 
     private func shortDate(_ value: String) -> String {
@@ -1558,6 +1890,32 @@ private struct TokenUsageCard: View {
             return "\(components[1])/\(components[2])"
         }
         return "\(components[1])/\(components[2])"
+    }
+}
+
+private struct TokenBarTooltip: View {
+    let bucket: DailyTokenUsage
+    let unitStyle: TokenUnitStyle
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(bucket.startDate)
+                .font(.system(size: 8, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.58))
+            Text(TokenCountFormatter.compact(bucket.tokens, style: unitStyle))
+                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+            Text(L("\(bucket.tokens.formatted()) Token", "\(bucket.tokens.formatted()) tokens"))
+                .font(.system(size: 7.5, design: .rounded))
+                .foregroundStyle(.cyan.opacity(0.82))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(red: 0.02, green: 0.04, blue: 0.09).opacity(0.96), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.3), lineWidth: 1))
+        .shadow(color: .black.opacity(0.45), radius: 7, y: 3)
     }
 }
 

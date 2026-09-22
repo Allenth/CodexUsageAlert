@@ -44,6 +44,7 @@ final class UsageMonitor: ObservableObject {
     @Published private(set) var refreshSchedule: RefreshSchedule
     @Published private(set) var dailyRefreshTime: Date
     @Published private(set) var tokenUnitStyle: TokenUnitStyle
+    @Published private(set) var alertThresholds: DailyAlertThresholds
 
     private let defaults = UserDefaults.standard
     private let codexAccessStore = CodexAccessStore()
@@ -65,6 +66,17 @@ final class UsageMonitor: ObservableObject {
         tokenUnitStyle = TokenUnitStyle(
             rawValue: defaults.string(forKey: "tokenUnitStyle") ?? ""
         ) ?? .chinese
+        let defaultThresholds = DailyAlertThresholds.default
+        alertThresholds = DailyAlertThresholds(
+            notice: defaults.object(forKey: "dailyNoticeThreshold") as? Double
+                ?? defaultThresholds.notice,
+            reminder: defaults.object(forKey: "dailyReminderThreshold") as? Double
+                ?? defaultThresholds.reminder,
+            high: defaults.object(forKey: "dailyHighThreshold") as? Double
+                ?? defaultThresholds.high,
+            baseCap: defaults.object(forKey: "dailyBaseCapThreshold") as? Double
+                ?? defaultThresholds.baseCap
+        ).normalized
         codexGrant = codexAccessStore.loadGrant()
         codexHomeGrant = codexAccessStore.loadCodexHomeGrant()
         codexSelectionName = codexGrant?.displayName
@@ -85,7 +97,8 @@ final class UsageMonitor: ObservableObject {
     var level: UsageAlertLevel {
         DailyUsagePolicy.level(
             for: dailyIncrease,
-            dailyCap: rolloverBudget?.todayAvailablePercent ?? 20
+            dailyCap: rolloverBudget?.todayAvailablePercent ?? alertThresholds.baseCap,
+            thresholds: alertThresholds
         )
     }
 
@@ -134,17 +147,29 @@ final class UsageMonitor: ObservableObject {
     func applySettings(
         refreshSchedule schedule: RefreshSchedule,
         dailyRefreshTime date: Date,
-        tokenUnitStyle style: TokenUnitStyle
+        tokenUnitStyle style: TokenUnitStyle,
+        alertThresholds thresholds: DailyAlertThresholds
     ) {
+        let normalizedThresholds = thresholds.normalized
+        let thresholdsChanged = normalizedThresholds != alertThresholds
         refreshSchedule = schedule
         dailyRefreshTime = date
         tokenUnitStyle = style
+        alertThresholds = normalizedThresholds
 
         defaults.set(schedule.rawValue, forKey: "refreshSchedule")
         let components = Calendar.current.dateComponents([.hour, .minute], from: date)
         let minutes = (components.hour ?? 9) * 60 + (components.minute ?? 0)
         defaults.set(minutes, forKey: "dailyRefreshMinutes")
         defaults.set(style.rawValue, forKey: "tokenUnitStyle")
+        defaults.set(normalizedThresholds.notice, forKey: "dailyNoticeThreshold")
+        defaults.set(normalizedThresholds.reminder, forKey: "dailyReminderThreshold")
+        defaults.set(normalizedThresholds.high, forKey: "dailyHighThreshold")
+        defaults.set(normalizedThresholds.baseCap, forKey: "dailyBaseCapThreshold")
+        if thresholdsChanged {
+            defaults.set([], forKey: "notifiedThresholdKeys")
+            recalculateRolloverBudgetForCurrentThresholds()
+        }
         scheduleNextRefresh()
     }
 
@@ -392,7 +417,8 @@ final class UsageMonitor: ObservableObject {
                 yesterdayUsedPercent: defaults.object(forKey: "rolloverYesterdayUsed") as? Double,
                 sourceDay: defaults.string(forKey: "rolloverSourceDay"),
                 yesterdayUsageSource: defaults.string(forKey: "rolloverUsageSource")
-                    .flatMap { RolloverUsageSource(rawValue: $0) }
+                    .flatMap { RolloverUsageSource(rawValue: $0) },
+                baseDailyCapPercent: alertThresholds.baseCap
             )
         } else {
             cachedBudget = nil
@@ -444,7 +470,8 @@ final class UsageMonitor: ObservableObject {
             windowDurationMins: snapshot.windowDurationMins,
             yesterdayUsedPercent: yesterdayUsed,
             sourceDay: yesterdayUsed == nil ? nil : previousDay,
-            yesterdayUsageSource: usageSource
+            yesterdayUsageSource: usageSource,
+            baseDailyCapPercent: alertThresholds.baseCap
         )
 
         defaults.set(today, forKey: "rolloverBudgetDay")
@@ -481,9 +508,12 @@ final class UsageMonitor: ObservableObject {
     }
 
     private func notifyForCrossedThresholds() {
-        let dailyCap = rolloverBudget?.todayAvailablePercent ?? 20
+        let dailyCap = rolloverBudget?.todayAvailablePercent ?? alertThresholds.baseCap
         var notified = Set(defaults.stringArray(forKey: "notifiedThresholdKeys") ?? [])
-        let crossed = DailyUsagePolicy.notificationThresholds(dailyCap: dailyCap)
+        let crossed = DailyUsagePolicy.notificationThresholds(
+            dailyCap: dailyCap,
+            thresholds: alertThresholds
+        )
             .filter { threshold in
                 dailyIncrease >= threshold && !notified.contains(thresholdKey(threshold))
             }
@@ -492,12 +522,16 @@ final class UsageMonitor: ObservableObject {
         notified.formUnion(crossed.map(thresholdKey))
         defaults.set(Array(notified).sorted(), forKey: "notifiedThresholdKeys")
 
-        let level = DailyUsagePolicy.level(for: dailyIncrease, dailyCap: dailyCap)
+        let level = DailyUsagePolicy.level(
+            for: dailyIncrease,
+            dailyCap: dailyCap,
+            thresholds: alertThresholds
+        )
         sendNotification(
             identifier: "codex-daily-\(Self.dayKey(for: Date()))-\(thresholdKey(highest))",
             title: AppLocalization.shared.alertLevelTitle(level),
             body: L(
-                "今天已消耗 \(Self.percent(dailyIncrease)) 个额度百分点，今日上限 \(Self.percent(dailyCap))%；当前周期累计使用 \(Self.percent(snapshot?.usedPercent ?? 0))%。",
+                "今天已使用 \(Self.percent(dailyIncrease))%，今日上限 \(Self.percent(dailyCap))%；当前周期累计使用 \(Self.percent(snapshot?.usedPercent ?? 0))%。",
                 "Today you used \(Self.percent(dailyIncrease)) percentage points of a \(Self.percent(dailyCap))% cap. Current window usage is \(Self.percent(snapshot?.usedPercent ?? 0))%."
             )
         )
@@ -505,6 +539,17 @@ final class UsageMonitor: ObservableObject {
 
     private func thresholdKey(_ value: Double) -> String {
         String(format: "%.1f", value)
+    }
+
+    private func recalculateRolloverBudgetForCurrentThresholds() {
+        guard let snapshot, let budget = rolloverBudget else { return }
+        rolloverBudget = RolloverBudgetCalculator.calculate(
+            windowDurationMins: snapshot.windowDurationMins,
+            yesterdayUsedPercent: budget.yesterdayUsedPercent,
+            sourceDay: budget.sourceDay,
+            yesterdayUsageSource: budget.yesterdayUsageSource,
+            baseDailyCapPercent: alertThresholds.baseCap
+        )
     }
 
     private func requestNotificationPermission() {

@@ -334,38 +334,51 @@ private struct UsagePopover: View {
             VStack(spacing: 16) {
                 header
 
-                HStack(spacing: 24) {
-                    UsageGauge(
-                        progressPercent: dailyProgressPercent,
-                        primaryPercent: monitor.dailyIncrease,
-                        label: L("今日已用", "Used today"),
-                        secondaryText: L(
-                            "今日上限 \(UsageMonitor.percent(todayCap))%",
-                            "Daily cap \(UsageMonitor.percent(todayCap))%"
-                        ),
-                        color: statusColor,
-                        isRefreshing: monitor.isRefreshing
-                    )
+                VStack(spacing: 8) {
+                    HStack {
+                        Text(L("额度概览", "Usage overview"))
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.72))
+                        Spacer()
+                        InfoPopoverButton(
+                            title: L("额度概览说明", "Usage overview"),
+                            sections: overviewInfoSections
+                        )
+                    }
 
-                    VStack(alignment: .leading, spacing: 13) {
-                        MetricRow(
-                            icon: "gauge.with.dots.needle.33percent",
-                            label: L("今日剩余", "Today left"),
-                            value: "\(UsageMonitor.percent(todayRemaining))%",
-                            tint: statusColor
+                    HStack(spacing: 24) {
+                        UsageGauge(
+                            progressPercent: dailyProgressPercent,
+                            primaryPercent: monitor.dailyIncrease,
+                            label: L("今日已用", "Used today"),
+                            secondaryText: L(
+                                "今日上限 \(UsageMonitor.percent(todayCap))%",
+                                "Daily cap \(UsageMonitor.percent(todayCap))%"
+                            ),
+                            color: statusColor,
+                            isRefreshing: monitor.isRefreshing
                         )
-                        MetricRow(
-                            icon: "chart.pie.fill",
-                            label: L("周期已用", "Window used"),
-                            value: "\(UsageMonitor.percent(monitor.snapshot?.usedPercent ?? 0))%",
-                            tint: .cyan
-                        )
-                        MetricRow(
-                            icon: "chart.pie.fill",
-                            label: L("周期剩余", "Window left"),
-                            value: "\(UsageMonitor.percent(monitor.snapshot?.remainingPercent ?? 100))%",
-                            tint: .cyan
-                        )
+
+                        VStack(alignment: .leading, spacing: 13) {
+                            MetricRow(
+                                icon: "gauge.with.dots.needle.33percent",
+                                label: L("今日剩余", "Today left"),
+                                value: "\(UsageMonitor.percent(todayRemaining))%",
+                                tint: statusColor
+                            )
+                            MetricRow(
+                                icon: "chart.pie.fill",
+                                label: L("周期已用", "Window used"),
+                                value: "\(UsageMonitor.percent(monitor.snapshot?.usedPercent ?? 0))%",
+                                tint: .cyan
+                            )
+                            MetricRow(
+                                icon: "chart.pie.fill",
+                                label: L("周期剩余", "Window left"),
+                                value: "\(UsageMonitor.percent(monitor.snapshot?.remainingPercent ?? 100))%",
+                                tint: .cyan
+                            )
+                        }
                     }
                 }
 
@@ -394,7 +407,12 @@ private struct UsagePopover: View {
                             icon: "calendar.badge.clock",
                             value: localization.date(snapshot.resetsAt),
                             detail: localization.time(snapshot.resetsAt),
-                            label: L("下次重置", "Next reset")
+                            label: L("下次重置", "Next reset"),
+                            infoTitle: L("下次重置说明", "Next reset"),
+                            infoText: L(
+                                "日期和时间来自 Codex 服务端返回的额度窗口重置时间，并按本机系统时区显示。",
+                                "This date and time come from the Codex usage-window reset timestamp and are displayed in this Mac's system timezone."
+                            )
                         )
                         StatTile(
                             icon: "clock.arrow.circlepath",
@@ -403,7 +421,12 @@ private struct UsagePopover: View {
                                 "\(UsageMonitor.percent(snapshot.windowDays)) days"
                             ),
                             detail: L("滚动周期", "Rolling window"),
-                            label: L("额度周期", "Usage window")
+                            label: L("额度周期", "Usage window"),
+                            infoTitle: L("额度周期说明", "Usage window"),
+                            infoText: L(
+                                "额度周期由 Codex 服务端定义。它是滚动窗口，不等同于自然周或每天重新计算。",
+                                "The quota window is defined by Codex. It is a rolling window, not a calendar week or a daily reset."
+                            )
                         )
                         StatTile(
                             icon: "bell.badge.fill",
@@ -416,7 +439,12 @@ private struct UsagePopover: View {
                                 "\(UsageMonitor.percent(monitor.alertThresholds.baseCap))% 基础上限",
                                 "\(UsageMonitor.percent(monitor.alertThresholds.baseCap))% base cap"
                             ),
-                            label: L("预警刻度", "Alert levels")
+                            label: L("预警刻度", "Alert levels"),
+                            infoTitle: L("预警刻度说明", "Alert levels"),
+                            infoText: L(
+                                "前三个数值分别是注意、提醒和偏高阈值；基础上限是你的个人每日预算，不是 OpenAI 官方硬限制。可在设置中修改。",
+                                "The first three values are Notice, Alert, and High thresholds. The base cap is your personal daily budget, not an official OpenAI hard limit, and can be changed in Settings."
+                            )
                         )
                     }
                 }
@@ -581,14 +609,7 @@ private struct UsagePopover: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "lock.shield.fill")
-            Text(L(
-                "额度来自 Codex 服务端 · 今日用量由本机记录计算",
-                "Quota from Codex · Daily increase calculated locally"
-            ))
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+        HStack {
             Spacer()
             Text(monitor.refreshSummary)
                 .lineLimit(1)
@@ -633,6 +654,35 @@ private struct UsagePopover: View {
 
     private var notificationIcon: String {
         monitor.notificationStatus == "denied" ? "bell.slash.fill" : "bell.fill"
+    }
+
+    private var overviewInfoSections: [InfoPopoverSection] {
+        [
+            InfoPopoverSection(
+                icon: "gauge.with.dots.needle.33percent",
+                title: L("今日已用与剩余", "Used and remaining today"),
+                text: L(
+                    "今日已用由此电脑保存的当天首次额度记录与当前周期已用量之差计算；今日剩余等于今日上限减去今日已用。换电脑后会从首次刷新重新记录。",
+                    "Used today is the difference between the first quota snapshot saved on this Mac today and the current window usage. Today left is today's cap minus that increase. A new Mac starts recording from its first refresh."
+                )
+            ),
+            InfoPopoverSection(
+                icon: "chart.pie.fill",
+                title: L("周期已用与剩余", "Window used and remaining"),
+                text: L(
+                    "周期已用、周期剩余和重置时间直接来自 Codex 服务端 account/rateLimits/read。",
+                    "Window used, window remaining, and reset time come directly from Codex account/rateLimits/read."
+                )
+            ),
+            InfoPopoverSection(
+                icon: "shield.lefthalf.filled",
+                title: L("数据与隐私", "Data and privacy"),
+                text: L(
+                    "应用通过本机 Codex App Server 读取用量，不收集账号密码、Cookie 或 API Key，也不上传用量数据。",
+                    "The app reads usage through the local Codex App Server. It does not collect passwords, cookies, or API keys, and does not upload usage data."
+                )
+            ),
+        ]
     }
 
     private var todayCap: Double {
@@ -1211,6 +1261,19 @@ private struct ReleaseNote: Identifiable {
 private enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            build: 24,
+            chineseItems: [
+                "为额度概览、今日预算、Token、重置时间、额度周期和预警刻度增加独立 info 浮窗。",
+                "将计算公式、数据来源、日期适配和阈值解释从主页面移入对应浮窗。",
+                "连接异常、Token 不可用和沙盒授权区域也提供独立说明入口。",
+            ],
+            englishItems: [
+                "Add dedicated info popovers for usage overview, daily budget, tokens, reset time, usage window, and alert levels.",
+                "Move formulas, data sources, date alignment, and threshold explanations from the dashboard into their matching popovers.",
+                "Add contextual info popovers for connection errors, unavailable token data, and sandbox authorization.",
+            ]
+        ),
+        ReleaseNote(
             build: 23,
             chineseItems: [
                 "服务端最新 Token 每日统计固定显示为本机今天，上一条显示为昨天。",
@@ -1440,6 +1503,71 @@ private struct MetricRow: View {
     }
 }
 
+private struct InfoPopoverSection: Identifiable {
+    let id = UUID()
+    let icon: String
+    let title: String
+    let text: String
+}
+
+private struct InfoPopoverButton: View {
+    let title: String
+    let sections: [InfoPopoverSection]
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            isPresented.toggle()
+        } label: {
+            Image(systemName: "info.circle.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.cyan.opacity(0.82))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .popover(isPresented: $isPresented, arrowEdge: .trailing) {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(spacing: 7) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(.cyan)
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 0)
+                }
+
+                ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                    if index > 0 {
+                        Divider().overlay(Color.white.opacity(0.08))
+                    }
+                    HStack(alignment: .top, spacing: 9) {
+                        Image(systemName: section.icon)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.cyan.opacity(0.86))
+                            .frame(width: 17, height: 17)
+                            .background(Color.cyan.opacity(0.09), in: RoundedRectangle(cornerRadius: 5))
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(section.title)
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.92))
+                            Text(section.text)
+                                .font(.system(size: 9.5))
+                                .foregroundStyle(.white.opacity(0.60))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+            .padding(15)
+            .frame(width: 310)
+            .background(Color(red: 0.035, green: 0.055, blue: 0.11))
+            .preferredColorScheme(.dark)
+        }
+    }
+}
+
 private struct DailyBudgetCard: View {
     let dailyIncrease: Double
     let statusColor: Color
@@ -1454,19 +1582,13 @@ private struct DailyBudgetCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L("今日额度预算", "Today's budget"))
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text(L(
-                        "根据本机记录计算，基础上限 \(UsageMonitor.percent(thresholds.baseCap))%",
-                        "Local snapshot difference · \(UsageMonitor.percent(thresholds.baseCap))-point base cap"
-                    ))
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.white.opacity(0.42))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                }
+                Text(L("今日额度预算", "Today's budget"))
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                InfoPopoverButton(
+                    title: L("今日额度预算说明", "Today's budget"),
+                    sections: infoSections
+                )
                 Spacer()
                 Text(
                     "\(UsageMonitor.percent(dailyIncrease)) / \(UsageMonitor.percent(cap))%"
@@ -1557,35 +1679,6 @@ private struct DailyBudgetCard: View {
                 )
             }
 
-            Text(formulaDescription)
-                .font(.system(size: 8.2, weight: .medium))
-                .foregroundStyle(.white.opacity(0.55))
-                .lineLimit(2)
-
-            if let budget, !budget.hasYesterdayData {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "desktopcomputer.trianglebadge.exclamationmark")
-                        .foregroundStyle(.orange.opacity(0.9))
-                    Text(L(
-                        "此设备从首次刷新开始记录，无法回溯其他电脑或首次刷新前的今日增量；周期已用与剩余仍来自账号实时数据。",
-                        "This device records from its first refresh. Earlier or other-device activity is not included in today's local increase; window usage remains live account data."
-                    ))
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                .font(.system(size: 8.2))
-                .foregroundStyle(.white.opacity(0.55))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
-            }
-
-            HStack(spacing: 5) {
-                Image(systemName: "info.circle.fill")
-                    .help(sourceHelp)
-                Text(sourceDescription)
-            }
-            .font(.system(size: 8.2))
-            .foregroundStyle(.white.opacity(0.34))
         }
         .padding(13)
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
@@ -1616,6 +1709,47 @@ private struct DailyBudgetCard: View {
             "每日建议：服务端 · 昨日：暂无本机记录 · \(baseCapText)：个人设置",
             "Sustainable: App Server · Yesterday: no local snapshot · \(baseCapText): personal rule"
         )
+    }
+
+    private var infoSections: [InfoPopoverSection] {
+        var sections = [
+            InfoPopoverSection(
+                icon: "function",
+                title: L("今日上限计算", "Today's cap calculation"),
+                text: formulaDescription
+            ),
+            InfoPopoverSection(
+                icon: "arrow.triangle.2.circlepath",
+                title: L("每日建议与结转", "Sustainable pace and rollover"),
+                text: sourceHelp
+            ),
+            InfoPopoverSection(
+                icon: "server.rack",
+                title: L("数据来源", "Data sources"),
+                text: sourceDescription
+            ),
+            InfoPopoverSection(
+                icon: "bell.badge.fill",
+                title: L("预警刻度", "Alert thresholds"),
+                text: L(
+                    "进度条上的四个刻度分别是 \(UsageMonitor.percent(thresholds.notice))%、\(UsageMonitor.percent(thresholds.reminder))%、\(UsageMonitor.percent(thresholds.high))% 和 \(UsageMonitor.percent(thresholds.baseCap))%。它们都可以在设置中修改。",
+                    "The four progress thresholds are \(UsageMonitor.percent(thresholds.notice))%, \(UsageMonitor.percent(thresholds.reminder))%, \(UsageMonitor.percent(thresholds.high))%, and \(UsageMonitor.percent(thresholds.baseCap))%. All can be changed in Settings."
+                )
+            ),
+        ]
+        if let budget, !budget.hasYesterdayData {
+            sections.append(
+                InfoPopoverSection(
+                    icon: "desktopcomputer.trianglebadge.exclamationmark",
+                    title: L("本机记录范围", "Local history limits"),
+                    text: L(
+                        "此设备从首次刷新开始记录，无法回溯其他电脑或首次刷新前的今日增量；周期已用与剩余仍来自账号实时数据。",
+                        "This device records from its first refresh. Earlier or other-device activity is not included in today's local increase; window usage remains live account data."
+                    )
+                )
+            )
+        }
+        return sections
     }
 
     private var formulaDescription: String {
@@ -1715,21 +1849,12 @@ private struct TokenUsageCard: View {
         usage.latestUsageDate()
     }
 
-    private var latestBucket: DailyTokenUsage? {
-        usage.latestDailyBucket
-    }
-
     private var todayKey: String {
         let formatter = DateFormatter()
         formatter.calendar = .current
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: Date())
-    }
-
-    private var isServerDateAdapted: Bool {
-        guard let latestBucket else { return false }
-        return latestBucket.startDate != todayKey
     }
 
     var body: some View {
@@ -1741,6 +1866,10 @@ private struct TokenUsageCard: View {
                     Text(L("账号 Token 使用量", "Account token usage"))
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(.white)
+                    InfoPopoverButton(
+                        title: L("Token 使用量说明", "Token usage"),
+                        sections: infoSections
+                    )
                 }
 
                 Spacer()
@@ -1764,8 +1893,7 @@ private struct TokenUsageCard: View {
                         usage.todayTokens(),
                         style: unitStyle
                     ),
-                    label: L("今日用量", "Today"),
-                    exactValue: usage.todayTokens()
+                    label: L("今日用量", "Today")
                 )
                 Divider().overlay(Color.white.opacity(0.08))
                 TokenMetric(
@@ -1773,8 +1901,7 @@ private struct TokenUsageCard: View {
                         usage.yesterdayTokens(),
                         style: unitStyle
                     ),
-                    label: L("昨日用量", "Yesterday"),
-                    exactValue: usage.yesterdayTokens()
+                    label: L("昨日用量", "Yesterday")
                 )
                 Divider().overlay(Color.white.opacity(0.08))
                 TokenMetric(
@@ -1782,34 +1909,10 @@ private struct TokenUsageCard: View {
                         usage.monthToDateTokens(),
                         style: unitStyle
                     ),
-                    label: monthToDateLabel,
-                    exactValue: usage.monthToDateTokens()
+                    label: monthToDateLabel
                 )
             }
             .frame(height: 35)
-
-            if isServerDateAdapted, let latestUsageDate {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "calendar.badge.clock")
-                        .foregroundStyle(.cyan.opacity(0.85))
-                    Text(L(
-                        "日期已按本机适配：最新统计显示为今日，上一条显示为昨日。",
-                        "Dates follow this Mac: the latest total is shown as today and the previous total as yesterday."
-                    ))
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                .font(.system(size: 8.2))
-                .foregroundStyle(.white.opacity(0.52))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(Color.cyan.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-                .help(
-                    L(
-                        "数据源：Codex App Server account/usage/read。服务端最新 startDate 原值为 \(latestUsageDate)，本机系统日期为 \(todayKey)；官方未说明服务端日期时区，应用按最新条目强制对齐今日。",
-                        "Source: Codex App Server account/usage/read. The latest raw startDate is \(latestUsageDate), while this Mac reports \(todayKey). Because the server timezone is undocumented, the app aligns the latest entry with today."
-                    )
-                )
-            }
 
             if recentBuckets.isEmpty {
                 HStack(spacing: 6) {
@@ -1893,6 +1996,56 @@ private struct TokenUsageCard: View {
             : L("本月累计", "Month to date")
     }
 
+    private var infoSections: [InfoPopoverSection] {
+        let rawDate = latestUsageDate ?? L("暂无", "Unavailable")
+        return [
+            InfoPopoverSection(
+                icon: "calendar.badge.clock",
+                title: L("今日与昨日", "Today and yesterday"),
+                text: L(
+                    "服务端最新一条每日统计固定显示为今天，上一条显示为昨天；图表日期按相同规则适配本机日期。服务端最新原始日期为 \(rawDate)，本机系统日期为 \(todayKey)。",
+                    "The latest server daily total is shown as today and the previous total as yesterday. Chart dates use the same local alignment. The latest raw server date is \(rawDate), while this Mac reports \(todayKey)."
+                )
+            ),
+            InfoPopoverSection(
+                icon: "sum",
+                title: L("本月累计", "Month to date"),
+                text: L(
+                    "本月累计会先把每日统计日期适配到本机日期，再汇总本机当前月份内的数据。",
+                    "Month to date first aligns daily totals to this Mac's dates, then sums entries in the current local month."
+                )
+            ),
+            InfoPopoverSection(
+                icon: "number.circle.fill",
+                title: L("精确数值", "Exact totals"),
+                text: L(
+                    "今日：\(exactTokens(usage.todayTokens())) Token；昨日：\(exactTokens(usage.yesterdayTokens())) Token；本月：\(exactTokens(usage.monthToDateTokens())) Token。",
+                    "Today: \(exactTokens(usage.todayTokens())) tokens; yesterday: \(exactTokens(usage.yesterdayTokens())) tokens; month to date: \(exactTokens(usage.monthToDateTokens())) tokens."
+                )
+            ),
+            InfoPopoverSection(
+                icon: "chart.bar.fill",
+                title: L("每日趋势", "Daily trend"),
+                text: L(
+                    "柱状图显示最近七条每日统计。将鼠标停在柱形上可查看适配后的日期和精确 Token 数。",
+                    "The chart shows the latest seven daily totals. Hover over a bar to see its aligned date and exact token count."
+                )
+            ),
+            InfoPopoverSection(
+                icon: "server.rack",
+                title: L("数据来源", "Data source"),
+                text: L(
+                    "总累计和每日统计来自 Codex App Server account/usage/read。官方没有说明 startDate 的时区，原始日期仅保留用于排查。",
+                    "Lifetime and daily totals come from Codex App Server account/usage/read. The startDate timezone is undocumented, so raw dates are retained only for diagnostics."
+                )
+            ),
+        ]
+    }
+
+    private func exactTokens(_ value: Int64?) -> String {
+        value?.formatted() ?? "--"
+    }
+
     private func tooltipOffset(index: Int, chartWidth: CGFloat) -> CGFloat {
         let tooltipWidth: CGFloat = 126
         let count = max(recentBuckets.count, 1)
@@ -1944,8 +2097,6 @@ private struct TokenBarTooltip: View {
 private struct TokenMetric: View {
     let value: String
     let label: String
-    let exactValue: Int64?
-    @EnvironmentObject private var localization: AppLocalization
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -1961,9 +2112,6 @@ private struct TokenMetric: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 7)
-        .help(exactValue.map {
-            L("精确值：\($0.formatted()) Token", "Exact: \($0.formatted()) tokens")
-        } ?? label)
     }
 }
 
@@ -1991,11 +2139,31 @@ private struct TokenUsageUnavailableCard: View {
                     .foregroundStyle(.white.opacity(0.42))
             }
             Spacer()
+            InfoPopoverButton(
+                title: L("Token 数据说明", "Token data"),
+                sections: [
+                    InfoPopoverSection(
+                        icon: "server.rack",
+                        title: L("当前状态", "Current status"),
+                        text: errorMessage ?? L(
+                            "正在等待 Codex App Server 返回 Token 数据。额度监控不会因此停止。",
+                            "Waiting for Codex App Server to return token data. Quota monitoring continues meanwhile."
+                        )
+                    ),
+                    InfoPopoverSection(
+                        icon: "arrow.up.forward.app.fill",
+                        title: L("如何恢复", "How to restore data"),
+                        text: L(
+                            "请先打开并登录 Codex 或 ChatGPT/Codex 应用，然后回到这里点击立即刷新。",
+                            "Open and sign in to Codex or the ChatGPT/Codex app, then return here and select Refresh now."
+                        )
+                    ),
+                ]
+            )
         }
         .padding(13)
         .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 13))
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.white.opacity(0.06), lineWidth: 1))
-        .help(errorMessage ?? L("等待 Codex 返回 Token 数据", "Waiting for Codex token data"))
     }
 }
 
@@ -2004,12 +2172,23 @@ private struct StatTile: View {
     let value: String
     let detail: String
     let label: String
+    let infoTitle: String
+    let infoText: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.cyan.opacity(0.85))
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.cyan.opacity(0.85))
+                Spacer(minLength: 0)
+                InfoPopoverButton(
+                    title: infoTitle,
+                    sections: [
+                        InfoPopoverSection(icon: icon, title: label, text: infoText),
+                    ]
+                )
+            }
             Text(value)
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .lineLimit(1)
@@ -2047,14 +2226,29 @@ private struct ErrorBanner: View {
                         .font(.system(size: 10.5))
                         .fixedSize(horizontal: false, vertical: true)
                         .foregroundStyle(.white.opacity(0.86))
-                    Text(L(
-                        "首次使用另一台电脑时，请先启动 Codex/ChatGPT 并确认账号已登录。",
-                        "On a new Mac, open Codex/ChatGPT first and confirm that you are signed in."
-                    ))
-                        .font(.system(size: 9))
-                        .foregroundStyle(.white.opacity(0.5))
                 }
                 Spacer(minLength: 0)
+                InfoPopoverButton(
+                    title: L("连接问题说明", "Connection issue"),
+                    sections: [
+                        InfoPopoverSection(
+                            icon: "person.crop.circle.badge.checkmark",
+                            title: L("登录状态", "Sign-in status"),
+                            text: L(
+                                "首次使用另一台电脑时，请先启动 Codex/ChatGPT 并确认账号已登录。",
+                                "On a new Mac, open Codex/ChatGPT first and confirm that you are signed in."
+                            )
+                        ),
+                        InfoPopoverSection(
+                            icon: "arrow.clockwise",
+                            title: L("重新读取", "Try again"),
+                            text: L(
+                                "登录完成后返回本应用，点击立即刷新。连接恢复后错误区域会自动消失。",
+                                "Return to this app after signing in and select Refresh now. This error area disappears automatically when the connection recovers."
+                            )
+                        ),
+                    ]
+                )
             }
 
             if canOpenCodex {
@@ -2093,17 +2287,31 @@ private struct CodexAccessCard: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.cyan)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L("完成本机 Codex 授权", "Authorize local Codex access"))
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text(L(
-                        "App Store 沙盒需要分别读取程序和登录资料。",
-                        "The App Store sandbox needs separate access to the app and sign-in data."
-                    ))
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.white.opacity(0.55))
-                }
+                Text(L("完成本机 Codex 授权", "Authorize local Codex access"))
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                Spacer()
+                InfoPopoverButton(
+                    title: L("本机授权说明", "Local access authorization"),
+                    sections: [
+                        InfoPopoverSection(
+                            icon: "app.badge.checkmark",
+                            title: L("Codex 程序", "Codex app"),
+                            text: L(
+                                "第一步授权应用启动本机 Codex App Server，用于读取账号额度和 Token 统计。",
+                                "The first permission lets the app launch the local Codex App Server to read account quota and token totals."
+                            )
+                        ),
+                        InfoPopoverSection(
+                            icon: "key.horizontal.fill",
+                            title: L("登录资料", "Sign-in data"),
+                            text: L(
+                                "第二步授权 Codex 使用本机 .codex 登录资料。应用本身不会解析账号内容；文件选择器会自动显示隐藏的 .codex 文件夹。",
+                                "The second permission lets Codex use local .codex sign-in data. This app does not parse account contents, and the file picker reveals the hidden .codex folder automatically."
+                            )
+                        ),
+                    ]
+                )
             }
 
             HStack(spacing: 8) {

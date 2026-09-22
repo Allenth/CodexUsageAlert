@@ -9,13 +9,13 @@ struct CodexUsageAlertApp: App {
 
     var body: some Scene {
         WindowGroup("Codex 用量预警", id: "dashboard") {
-            UsagePopover(monitor: monitor, presentsSettingsInline: false)
+            UsagePopover(monitor: monitor)
         }
         .defaultSize(width: 380, height: 750)
         .windowResizability(.contentSize)
 
         MenuBarExtra {
-            UsagePopover(monitor: monitor, presentsSettingsInline: true)
+            UsagePopover(monitor: monitor)
         } label: {
             HStack(spacing: 4) {
                 Image(nsImage: MenuBarIcon.image)
@@ -135,7 +135,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
 private struct UsagePopover: View {
     @ObservedObject var monitor: UsageMonitor
-    let presentsSettingsInline: Bool
     @State private var showingSettings = false
 
     var body: some View {
@@ -240,7 +239,7 @@ private struct UsagePopover: View {
             .frame(width: 344)
             .padding(18)
 
-            if presentsSettingsInline && showingSettings {
+            if showingSettings {
                 Color.black.opacity(0.48)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
@@ -262,19 +261,7 @@ private struct UsagePopover: View {
         .frame(width: 380)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
-        .sheet(isPresented: sheetIsPresented) {
-            RefreshSettingsView(monitor: monitor) {
-                showingSettings = false
-            }
-        }
         .animation(.easeOut(duration: 0.16), value: showingSettings)
-    }
-
-    private var sheetIsPresented: Binding<Bool> {
-        Binding(
-            get: { showingSettings && !presentsSettingsInline },
-            set: { showingSettings = $0 }
-        )
     }
 
     private var header: some View {

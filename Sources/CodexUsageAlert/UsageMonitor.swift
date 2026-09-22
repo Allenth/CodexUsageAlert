@@ -110,6 +110,23 @@ final class UsageMonitor: ObservableObject {
         defaults.set(style.rawValue, forKey: "tokenUnitStyle")
     }
 
+    func applySettings(
+        refreshSchedule schedule: RefreshSchedule,
+        dailyRefreshTime date: Date,
+        tokenUnitStyle style: TokenUnitStyle
+    ) {
+        refreshSchedule = schedule
+        dailyRefreshTime = date
+        tokenUnitStyle = style
+
+        defaults.set(schedule.rawValue, forKey: "refreshSchedule")
+        let components = Calendar.current.dateComponents([.hour, .minute], from: date)
+        let minutes = (components.hour ?? 9) * 60 + (components.minute ?? 0)
+        defaults.set(minutes, forKey: "dailyRefreshMinutes")
+        defaults.set(style.rawValue, forKey: "tokenUnitStyle")
+        scheduleNextRefresh()
+    }
+
     func refresh() {
         guard !isRefreshing else { return }
         isRefreshing = true

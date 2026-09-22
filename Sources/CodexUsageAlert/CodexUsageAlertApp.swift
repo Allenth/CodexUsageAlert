@@ -18,11 +18,7 @@ struct CodexUsageAlertApp: App {
             UsagePopover(monitor: monitor)
         } label: {
             HStack(spacing: 4) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 14, height: 14)
-                    .padding(1)
+                Image(nsImage: MenuBarIcon.image)
                     .frame(width: 16, height: 16)
                 Text(monitor.menuTitle)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -30,6 +26,36 @@ struct CodexUsageAlertApp: App {
         }
         .menuBarExtraStyle(.window)
     }
+}
+
+private enum MenuBarIcon {
+    static let image: NSImage = {
+        let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { _ in
+            NSGraphicsContext.saveGraphicsState()
+            defer { NSGraphicsContext.restoreGraphicsState() }
+
+            NSColor.black.setStroke()
+            let crescent = NSBezierPath()
+            crescent.lineWidth = 2.2
+            crescent.lineCapStyle = .round
+            crescent.appendArc(
+                withCenter: NSPoint(x: 7.7, y: 7.7),
+                radius: 5.4,
+                startAngle: 42,
+                endAngle: 318,
+                clockwise: false
+            )
+            crescent.stroke()
+
+            NSColor.black.setFill()
+            NSBezierPath(
+                ovalIn: NSRect(x: 11.8, y: 11.8, width: 2.2, height: 2.2)
+            ).fill()
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }()
 }
 
 private final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -186,7 +212,9 @@ private struct UsagePopover: View {
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .sheet(isPresented: $showingSettings) {
-            RefreshSettingsView(monitor: monitor)
+            RefreshSettingsView(monitor: monitor) {
+                showingSettings = false
+            }
         }
     }
 
@@ -340,7 +368,19 @@ private struct UsagePopover: View {
 
 private struct RefreshSettingsView: View {
     @ObservedObject var monitor: UsageMonitor
-    @Environment(\.dismiss) private var dismiss
+    let onDone: () -> Void
+
+    @State private var selectedSchedule: RefreshSchedule
+    @State private var selectedDailyRefreshTime: Date
+    @State private var selectedTokenUnitStyle: TokenUnitStyle
+
+    init(monitor: UsageMonitor, onDone: @escaping () -> Void) {
+        self.monitor = monitor
+        self.onDone = onDone
+        _selectedSchedule = State(initialValue: monitor.refreshSchedule)
+        _selectedDailyRefreshTime = State(initialValue: monitor.dailyRefreshTime)
+        _selectedTokenUnitStyle = State(initialValue: monitor.tokenUnitStyle)
+    }
 
     var body: some View {
         ZStack {
@@ -365,17 +405,21 @@ private struct RefreshSettingsView: View {
                             .foregroundStyle(.white.opacity(0.48))
                     }
                     Spacer()
-                    Button("完成") { dismiss() }
+                    Button {
+                        saveAndClose()
+                    } label: {
+                        Text("完成")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .padding(.horizontal, 4)
+                    }
                         .buttonStyle(.borderedProminent)
-                        .tint(.cyan.opacity(0.7))
+                        .tint(Color(red: 0.00, green: 0.58, blue: 0.72))
+                        .keyboardShortcut(.defaultAction)
                 }
 
                 Picker(
                     "刷新频率",
-                    selection: Binding(
-                        get: { monitor.refreshSchedule },
-                        set: { monitor.setRefreshSchedule($0) }
-                    )
+                    selection: $selectedSchedule
                 ) {
                     ForEach(RefreshSchedule.allCases) { schedule in
                         Text(schedule.title).tag(schedule)
@@ -384,7 +428,7 @@ private struct RefreshSettingsView: View {
                 .pickerStyle(.radioGroup)
                 .foregroundStyle(.white)
 
-                if monitor.refreshSchedule == .daily {
+                if selectedSchedule == .daily {
                     HStack {
                         Label("每天刷新时间", systemImage: "calendar.badge.clock")
                             .font(.system(size: 11.5, weight: .medium))
@@ -392,10 +436,7 @@ private struct RefreshSettingsView: View {
                         Spacer()
                         DatePicker(
                             "",
-                            selection: Binding(
-                                get: { monitor.dailyRefreshTime },
-                                set: { monitor.setDailyRefreshTime($0) }
-                            ),
+                            selection: $selectedDailyRefreshTime,
                             displayedComponents: .hourAndMinute
                         )
                         .labelsHidden()
@@ -416,10 +457,7 @@ private struct RefreshSettingsView: View {
 
                     Picker(
                         "Token 数量单位",
-                        selection: Binding(
-                            get: { monitor.tokenUnitStyle },
-                            set: { monitor.setTokenUnitStyle($0) }
-                        )
+                        selection: $selectedTokenUnitStyle
                     ) {
                         ForEach(TokenUnitStyle.allCases) { style in
                             Text(style.title).tag(style)
@@ -448,6 +486,15 @@ private struct RefreshSettingsView: View {
         .frame(width: 330)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
+    }
+
+    private func saveAndClose() {
+        monitor.applySettings(
+            refreshSchedule: selectedSchedule,
+            dailyRefreshTime: selectedDailyRefreshTime,
+            tokenUnitStyle: selectedTokenUnitStyle
+        )
+        onDone()
     }
 }
 

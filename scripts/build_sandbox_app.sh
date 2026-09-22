@@ -1,6 +1,10 @@
 #!/bin/zsh
 set -euo pipefail
 
+# Daily development build. This variant is sandboxed, uses a separate bundle
+# identifier, and may be run alongside a release artifact without overwriting it.
+# Both variants intentionally share Resources/AppIcon.icns.
+
 SCRIPT_DIR="${0:A:h}"
 PROJECT_DIR="${SCRIPT_DIR:h}"
 OUTPUT_DIR="$PROJECT_DIR/dist-sandbox"

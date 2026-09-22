@@ -49,13 +49,23 @@ Token 活动接口不可用时，额度监控仍会继续工作。`20%` 是应�
 
 ## 构建与运行
 
+日常开发和调试使用 App 沙盒开发版：
+
+```bash
+swift test
+./scripts/build_sandbox_app.sh
+open "dist-sandbox/Codex Usage Alert.app"
+```
+
+GitHub 开源发布使用正常安装版：
+
 ```bash
 swift test
 ./scripts/build_app.sh
 open "dist/Codex Usage Alert.app"
 ```
 
-构建结果位于 `dist/Codex Usage Alert.app`。首次启动时，请在 macOS 权限提示中允许系统通知。
+两版来自同一套源码并共用 `Resources/AppIcon.icns`，但使用不同的 Bundle ID、权限和输出目录。开发时只运行沙盒版；正常安装版仅在发布验证时启动。首次启动时，请在 macOS 权限提示中允许系统通知。详细规则见[双版本构建与代码管理](docs/build-variants.md)。
 
 命令行读取器：
 
@@ -72,6 +82,7 @@ Sources/CodexUsageCLI/      JSON 命令行读取器
 Tests/UsageCoreTests/       核心逻辑测试
 Resources/                  Info.plist 与应用图标
 scripts/build_app.sh        .app 构建和临时签名脚本
+scripts/build_sandbox_app.sh App 沙盒开发版构建脚本
 docs/                       开发计划、提示词和项目文档
 ```
 
@@ -81,6 +92,7 @@ docs/                       开发计划、提示词和项目文档
 
 - [Mac App Store 开发计划](docs/app-store-development-plan.md)
 - [Mac App Store 上架资料](docs/app-store-metadata.md)
+- [双版本构建与代码管理](docs/build-variants.md)
 - [从零生成 Codex 用量预警的完整开发提示词](docs/development-prompt.md)
 
 ## 分发说明

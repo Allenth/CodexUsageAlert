@@ -88,6 +88,15 @@ public struct AccountTokenUsage: Codable, Equatable, Sendable {
             .max()
     }
 
+    public func latestUsageDate(
+        through date: Date = Date(),
+        calendar: Calendar = .current
+    ) -> String? {
+        monthToDateBuckets(through: date, calendar: calendar)
+            .map(\.startDate)
+            .max()
+    }
+
     private func monthToDateBuckets(
         through date: Date,
         calendar: Calendar
@@ -204,38 +213,44 @@ public enum DailyUsagePolicy {
         return current - baseline
     }
 
-    public static func level(for increase: Double) -> UsageAlertLevel {
-        if increase >= 20 { return .cap }
+    public static func level(for increase: Double, dailyCap: Double = 20) -> UsageAlertLevel {
+        if increase >= max(20, dailyCap) { return .cap }
         if increase >= 15 { return .high }
         if increase >= 10 { return .reminder }
         if increase >= 5 { return .notice }
         return .normal
     }
+
+    public static func notificationThresholds(dailyCap: Double) -> [Double] {
+        let cap = max(20, dailyCap)
+        if cap > 20 { return defaultThresholds + [cap] }
+        return defaultThresholds
+    }
 }
 
 public struct DailyBudgetRollover: Equatable, Sendable {
-    public let baseDailyBudgetPercent: Double
+    public let sustainableDailyBudgetPercent: Double
+    public let baseDailyCapPercent: Double
     public let yesterdayUsedPercent: Double?
-    public let yesterdayAvailablePercent: Double?
     public let carriedPercent: Double
     public let todayAvailablePercent: Double
     public let sourceDay: String?
 
     public var hasYesterdayData: Bool {
-        yesterdayUsedPercent != nil && yesterdayAvailablePercent != nil
+        yesterdayUsedPercent != nil
     }
 
     public init(
-        baseDailyBudgetPercent: Double,
+        sustainableDailyBudgetPercent: Double,
+        baseDailyCapPercent: Double,
         yesterdayUsedPercent: Double?,
-        yesterdayAvailablePercent: Double?,
         carriedPercent: Double,
         todayAvailablePercent: Double,
         sourceDay: String?
     ) {
-        self.baseDailyBudgetPercent = baseDailyBudgetPercent
+        self.sustainableDailyBudgetPercent = sustainableDailyBudgetPercent
+        self.baseDailyCapPercent = baseDailyCapPercent
         self.yesterdayUsedPercent = yesterdayUsedPercent
-        self.yesterdayAvailablePercent = yesterdayAvailablePercent
         self.carriedPercent = carriedPercent
         self.todayAvailablePercent = todayAvailablePercent
         self.sourceDay = sourceDay
@@ -251,24 +266,21 @@ public enum RolloverBudgetCalculator {
     public static func calculate(
         windowDurationMins: Double,
         yesterdayUsedPercent: Double?,
-        yesterdayAvailablePercent: Double?,
-        sourceDay: String?
+        sourceDay: String?,
+        baseDailyCapPercent: Double = 20
     ) -> DailyBudgetRollover {
-        let base = sustainableDailyBudget(windowDurationMins: windowDurationMins)
+        let sustainable = sustainableDailyBudget(windowDurationMins: windowDurationMins)
+        let baseCap = min(100, max(0, baseDailyCapPercent))
         let used = yesterdayUsedPercent.map { min(100, max(0, $0)) }
-        let previousAvailable = yesterdayAvailablePercent.map { min(100, max(0, $0)) }
-        let hasCompleteYesterday = used != nil && previousAvailable != nil
-        let carried = hasCompleteYesterday
-            ? max(0, (previousAvailable ?? base) - (used ?? 0))
-            : 0
+        let carried = used.map { max(0, sustainable - $0) } ?? 0
 
         return DailyBudgetRollover(
-            baseDailyBudgetPercent: base,
+            sustainableDailyBudgetPercent: sustainable,
+            baseDailyCapPercent: baseCap,
             yesterdayUsedPercent: used,
-            yesterdayAvailablePercent: previousAvailable,
             carriedPercent: carried,
-            todayAvailablePercent: min(100, base + carried),
-            sourceDay: hasCompleteYesterday ? sourceDay : nil
+            todayAvailablePercent: min(100, baseCap + carried),
+            sourceDay: used == nil ? nil : sourceDay
         )
     }
 }

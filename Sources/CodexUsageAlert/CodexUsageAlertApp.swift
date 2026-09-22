@@ -11,7 +11,7 @@ struct CodexUsageAlertApp: App {
         WindowGroup("Codex 用量预警", id: "dashboard") {
             UsagePopover(monitor: monitor)
         }
-        .defaultSize(width: 380, height: 750)
+        .defaultSize(width: 380, height: 820)
         .windowResizability(.contentSize)
 
         MenuBarExtra {
@@ -222,7 +222,7 @@ private struct UsagePopover: View {
                         StatTile(
                             icon: "bell.badge.fill",
                             value: "5 · 10 · 15",
-                            detail: "20% 为上限",
+                            detail: "20% 基础上限",
                             label: "预警刻度"
                         )
                     }
@@ -634,14 +634,10 @@ private struct DailyBudgetCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("今日可用日均预算")
+                    Text("今日额度预算")
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text(
-                        budget?.hasYesterdayData == true
-                            ? "昨天未用完的额度已结转"
-                            : "有完整昨日快照后自动结转"
-                    )
+                    Text("按自然日累计，基础上限 20 个百分点")
                         .font(.system(size: 9.5))
                         .foregroundStyle(.white.opacity(0.42))
                 }
@@ -651,29 +647,6 @@ private struct DailyBudgetCard: View {
                 )
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(statusColor)
-            }
-
-            HStack(spacing: 0) {
-                BudgetInputValue(
-                    value: formatted(budget?.baseDailyBudgetPercent),
-                    label: "基础日均"
-                )
-                BudgetInputValue(
-                    value: formatted(budget?.yesterdayAvailablePercent),
-                    label: "昨日可用"
-                )
-                BudgetInputValue(
-                    value: formatted(budget?.yesterdayUsedPercent),
-                    label: "昨日已用"
-                )
-                BudgetInputValue(
-                    value: "+\(formatted(budget?.carriedPercent))",
-                    label: "结转"
-                )
-                BudgetInputValue(
-                    value: formatted(budget?.todayAvailablePercent),
-                    label: "今日可用"
-                )
             }
 
             GeometryReader { geometry in
@@ -695,13 +668,63 @@ private struct DailyBudgetCard: View {
                             height: 8
                         )
                         .shadow(color: statusColor.opacity(0.38), radius: 5)
+
+                    ForEach([5.0, 10.0, 15.0, 20.0], id: \.self) { threshold in
+                        Circle()
+                            .fill(Color.white.opacity(0.35))
+                            .frame(width: 5, height: 5)
+                            .offset(
+                                x: max(
+                                    0,
+                                    min(geometry.size.width - 5, geometry.size.width * threshold / cap - 2.5)
+                                )
+                            )
+                    }
                 }
                 .frame(height: 8)
             }
             .frame(height: 8)
 
+            HStack(spacing: 0) {
+                RuleLabel(value: "5", label: "注意")
+                RuleLabel(value: "10", label: "提醒")
+                RuleLabel(value: "15", label: "偏高")
+                RuleLabel(value: "20", label: "基础上限")
+            }
+
+            Divider().overlay(Color.white.opacity(0.07))
+
+            HStack(spacing: 0) {
+                BudgetInputValue(
+                    value: formatted(budget?.sustainableDailyBudgetPercent),
+                    label: "周日均"
+                )
+                BudgetInputValue(
+                    value: formatted(budget?.yesterdayUsedPercent),
+                    label: "昨日已用"
+                )
+                BudgetInputValue(
+                    value: "+\(formatted(budget?.carriedPercent))",
+                    label: "昨日余量"
+                )
+                BudgetInputValue(
+                    value: formatted(budget?.baseDailyCapPercent ?? 20),
+                    label: "基础上限"
+                )
+                BudgetInputValue(
+                    value: formatted(budget?.todayAvailablePercent ?? 20),
+                    label: "今日上限"
+                )
+            }
+
+            Text(formulaDescription)
+                .font(.system(size: 8.2, weight: .medium))
+                .foregroundStyle(.white.opacity(0.55))
+                .lineLimit(2)
+
             HStack(spacing: 5) {
-                Image(systemName: "externaldrive.badge.icloud")
+                Image(systemName: "info.circle.fill")
+                    .help(sourceHelp)
                 Text(sourceDescription)
             }
             .font(.system(size: 8.2))
@@ -714,19 +737,45 @@ private struct DailyBudgetCard: View {
 
     private var sourceDescription: String {
         guard let budget else {
-            return "日均：等待 App Server 额度窗口 · 昨日：暂无快照"
+            return "周日均：等待 App Server · 昨日：暂无本机快照 · 20%：个人规则"
         }
-        let windowDays = UsageMonitor.percent(100 / max(budget.baseDailyBudgetPercent, 0.1))
         if budget.hasYesterdayData {
             let sourceDay = budget.sourceDay ?? "昨日"
-            return "日均：App Server 100÷\(windowDays)天 · \(sourceDay)：本机快照估算"
+            return "周日均：App Server · \(sourceDay)：本机快照 · 20%：个人规则"
         }
-        return "日均：App Server 100÷\(windowDays)天 · 昨日：暂无快照"
+        return "周日均：App Server · 昨日：暂无本机快照 · 20%：个人规则"
+    }
+
+    private var formulaDescription: String {
+        guard let budget, budget.hasYesterdayData else {
+            return "今日上限 20%；取得完整昨日快照后，再加上昨日日均未用部分。"
+        }
+        return "今日上限 = \(formatted(budget.baseDailyCapPercent)) + \(formatted(budget.carriedPercent)) = \(formatted(budget.todayAvailablePercent))"
+    }
+
+    private var sourceHelp: String {
+        "周日均来自 account/rateLimits/read 的窗口长度（100 ÷ 窗口天数）；昨日已用来自本机同日额度快照差值；20% 是你的个人每日基础上限，不是 OpenAI 官方硬限制。缺少昨日快照时不按 0 计算，也不结转。"
     }
 
     private func formatted(_ value: Double?) -> String {
         guard let value else { return "--" }
         return "\(UsageMonitor.percent(value))%"
+    }
+}
+
+private struct RuleLabel: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Text(value)
+                .fontWeight(.semibold)
+            Text(label)
+        }
+        .font(.system(size: 7.6))
+        .foregroundStyle(.white.opacity(0.38))
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -761,6 +810,23 @@ private struct TokenUsageCard: View {
         Double(max(recentBuckets.map(\.tokens).max() ?? 0, 1))
     }
 
+    private var latestUsageDate: String? {
+        usage.latestUsageDate()
+    }
+
+    private var todayKey: String {
+        let formatter = DateFormatter()
+        formatter.calendar = .current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }
+
+    private var isTodayBucketMissing: Bool {
+        guard let latestUsageDate else { return false }
+        return latestUsageDate < todayKey
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack {
@@ -790,7 +856,7 @@ private struct TokenUsageCard: View {
                         usage.monthToDateTokens(),
                         style: unitStyle
                     ),
-                    label: "本月截至今日",
+                    label: monthToDateLabel,
                     exactValue: usage.monthToDateTokens()
                 )
                 Divider().overlay(Color.white.opacity(0.08))
@@ -810,6 +876,25 @@ private struct TokenUsageCard: View {
                 )
             }
             .frame(height: 35)
+
+            if isTodayBucketMissing, let latestUsageDate {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "clock.badge.exclamationmark.fill")
+                        .foregroundStyle(.orange.opacity(0.9))
+                    Text(
+                        "今日 \(shortDate(todayKey)) 尚无 Token 日汇总；App Server 当前只返回到 \(shortDate(latestUsageDate))，服务端汇总尚未生成或同步，未按 0 计。"
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .font(.system(size: 8.2))
+                .foregroundStyle(.white.opacity(0.52))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+                .help(
+                    "数据源：Codex App Server account/usage/read。当前 dailyUsageBuckets 的最后日期是 \(latestUsageDate)，本机北京时间日期是 \(todayKey)。该接口返回服务端按日汇总，不是实时 Token 明细。"
+                )
+            }
 
             if recentBuckets.isEmpty {
                 HStack(spacing: 6) {
@@ -861,6 +946,12 @@ private struct TokenUsageCard: View {
     private var streakLabel: String {
         guard let longest = usage.summary.longestStreakDays else { return "连续使用" }
         return "连续 · 最长 \(longest) 天"
+    }
+
+    private var monthToDateLabel: String {
+        guard let latestUsageDate else { return "本月暂无日汇总" }
+        if latestUsageDate == todayKey { return "本月截至今日" }
+        return "本月截至 \(shortDate(latestUsageDate))"
     }
 
     private func shortDate(_ value: String) -> String {

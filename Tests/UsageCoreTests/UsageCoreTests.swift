@@ -20,6 +20,8 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(DailyUsagePolicy.level(for: 10), .reminder)
         XCTAssertEqual(DailyUsagePolicy.level(for: 15), .high)
         XCTAssertEqual(DailyUsagePolicy.level(for: 20), .cap)
+        XCTAssertEqual(DailyUsagePolicy.level(for: 20, dailyCap: 27.3), .high)
+        XCTAssertEqual(DailyUsagePolicy.level(for: 27.3, dailyCap: 27.3), .cap)
     }
 
     func testQuotaResetDoesNotProduceNegativeDailyUsage() {
@@ -29,14 +31,14 @@ final class UsageCoreTests: XCTestCase {
     func testUnusedSustainableBudgetRollsIntoNextDay() {
         let budget = RolloverBudgetCalculator.calculate(
             windowDurationMins: 10_080,
-            yesterdayUsedPercent: 10,
-            yesterdayAvailablePercent: 14.285714,
+            yesterdayUsedPercent: 7,
             sourceDay: "2026-09-21"
         )
 
-        XCTAssertEqual(budget.baseDailyBudgetPercent, 14.285714, accuracy: 0.0001)
-        XCTAssertEqual(budget.carriedPercent, 4.285714, accuracy: 0.0001)
-        XCTAssertEqual(budget.todayAvailablePercent, 18.571428, accuracy: 0.0001)
+        XCTAssertEqual(budget.sustainableDailyBudgetPercent, 14.285714, accuracy: 0.0001)
+        XCTAssertEqual(budget.baseDailyCapPercent, 20, accuracy: 0.0001)
+        XCTAssertEqual(budget.carriedPercent, 7.285714, accuracy: 0.0001)
+        XCTAssertEqual(budget.todayAvailablePercent, 27.285714, accuracy: 0.0001)
         XCTAssertTrue(budget.hasYesterdayData)
     }
 
@@ -44,13 +46,19 @@ final class UsageCoreTests: XCTestCase {
         let budget = RolloverBudgetCalculator.calculate(
             windowDurationMins: 10_080,
             yesterdayUsedPercent: nil,
-            yesterdayAvailablePercent: nil,
             sourceDay: nil
         )
 
         XCTAssertEqual(budget.carriedPercent, 0)
-        XCTAssertEqual(budget.todayAvailablePercent, 14.285714, accuracy: 0.0001)
+        XCTAssertEqual(budget.todayAvailablePercent, 20, accuracy: 0.0001)
         XCTAssertFalse(budget.hasYesterdayData)
+    }
+
+    func testDailyCapThresholdIncludesRolloverCap() {
+        XCTAssertEqual(
+            DailyUsagePolicy.notificationThresholds(dailyCap: 27.3),
+            [5, 10, 15, 20, 27.3]
+        )
     }
 
     func testCompactTokenFormatting() {
@@ -124,6 +132,10 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(
             usage.peakDailyTokensThisMonth(through: referenceDate, calendar: calendar),
             500
+        )
+        XCTAssertEqual(
+            usage.latestUsageDate(through: referenceDate, calendar: calendar),
+            "2026-09-20"
         )
     }
 }

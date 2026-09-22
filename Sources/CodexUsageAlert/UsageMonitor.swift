@@ -80,7 +80,10 @@ final class UsageMonitor: ObservableObject {
     }
 
     var level: UsageAlertLevel {
-        DailyUsagePolicy.level(for: dailyIncrease)
+        DailyUsagePolicy.level(
+            for: dailyIncrease,
+            dailyCap: rolloverBudget?.todayAvailablePercent ?? 20
+        )
     }
 
     var refreshSummary: String {
@@ -220,14 +223,13 @@ final class UsageMonitor: ObservableObject {
             previousBaselineDay: savedDay
         )
         rolloverBudget = budget
-        defaults.set(today, forKey: "availableBudgetDay")
-        defaults.set(budget.todayAvailablePercent, forKey: "availableBudgetPercent")
 
         if savedDay != today || savedBaseline == nil {
             defaults.set(today, forKey: "baselineDay")
             defaults.set(newSnapshot.usedPercent, forKey: "baselineUsedPercent")
             defaults.set(0.0, forKey: "dailyUsageOffset")
             defaults.set([], forKey: "notifiedThresholds")
+            defaults.set([], forKey: "notifiedThresholdKeys")
             dailyIncrease = 0
             saveDailyUsage(0, for: today)
             return
@@ -258,13 +260,12 @@ final class UsageMonitor: ObservableObject {
         snapshot: UsageSnapshot,
         previousBaselineDay: String?
     ) -> DailyBudgetRollover {
-        if defaults.string(forKey: "rolloverBudgetDay") == today {
+        let schemaVersion = 2
+        if defaults.string(forKey: "rolloverBudgetDay") == today,
+           defaults.integer(forKey: "rolloverBudgetSchemaVersion") == schemaVersion {
             return RolloverBudgetCalculator.calculate(
                 windowDurationMins: snapshot.windowDurationMins,
                 yesterdayUsedPercent: defaults.object(forKey: "rolloverYesterdayUsed") as? Double,
-                yesterdayAvailablePercent: defaults.object(
-                    forKey: "rolloverYesterdayAvailable"
-                ) as? Double,
                 sourceDay: defaults.string(forKey: "rolloverSourceDay")
             )
         }
@@ -276,36 +277,29 @@ final class UsageMonitor: ObservableObject {
         )
         let previousDay = previousDate.map(Self.dayKey(for:))
         let usageDay = defaults.string(forKey: "dailyUsageRecordDay")
-        let availableDay = defaults.string(forKey: "availableBudgetDay")
         let hasYesterday = previousDay != nil
             && previousBaselineDay == previousDay
             && usageDay == previousDay
-            && availableDay == previousDay
 
         let yesterdayUsed = hasYesterday
             ? defaults.object(forKey: "dailyUsageRecordPercent") as? Double
             : nil
-        let yesterdayAvailable = hasYesterday
-            ? defaults.object(forKey: "availableBudgetPercent") as? Double
-            : nil
         let budget = RolloverBudgetCalculator.calculate(
             windowDurationMins: snapshot.windowDurationMins,
             yesterdayUsedPercent: yesterdayUsed,
-            yesterdayAvailablePercent: yesterdayAvailable,
             sourceDay: hasYesterday ? previousDay : nil
         )
 
         defaults.set(today, forKey: "rolloverBudgetDay")
+        defaults.set(schemaVersion, forKey: "rolloverBudgetSchemaVersion")
         if let yesterdayUsed {
             defaults.set(yesterdayUsed, forKey: "rolloverYesterdayUsed")
         } else {
             defaults.removeObject(forKey: "rolloverYesterdayUsed")
         }
-        if let yesterdayAvailable {
-            defaults.set(yesterdayAvailable, forKey: "rolloverYesterdayAvailable")
-        } else {
-            defaults.removeObject(forKey: "rolloverYesterdayAvailable")
-        }
+        defaults.removeObject(forKey: "rolloverYesterdayAvailable")
+        defaults.removeObject(forKey: "availableBudgetDay")
+        defaults.removeObject(forKey: "availableBudgetPercent")
         if let previousDay, hasYesterday {
             defaults.set(previousDay, forKey: "rolloverSourceDay")
         } else {
@@ -325,21 +319,27 @@ final class UsageMonitor: ObservableObject {
     }
 
     private func notifyForCrossedThresholds() {
-        var notified = Set(defaults.array(forKey: "notifiedThresholds") as? [Int] ?? [])
-        let crossed = DailyUsagePolicy.defaultThresholds
-            .map(Int.init)
-            .filter { dailyIncrease >= Double($0) && !notified.contains($0) }
+        let dailyCap = rolloverBudget?.todayAvailablePercent ?? 20
+        var notified = Set(defaults.stringArray(forKey: "notifiedThresholdKeys") ?? [])
+        let crossed = DailyUsagePolicy.notificationThresholds(dailyCap: dailyCap)
+            .filter { threshold in
+                dailyIncrease >= threshold && !notified.contains(thresholdKey(threshold))
+            }
 
         guard let highest = crossed.max() else { return }
-        notified.formUnion(crossed)
-        defaults.set(Array(notified).sorted(), forKey: "notifiedThresholds")
+        notified.formUnion(crossed.map(thresholdKey))
+        defaults.set(Array(notified).sorted(), forKey: "notifiedThresholdKeys")
 
-        let level = DailyUsagePolicy.level(for: dailyIncrease)
+        let level = DailyUsagePolicy.level(for: dailyIncrease, dailyCap: dailyCap)
         sendNotification(
-            identifier: "codex-daily-\(Self.dayKey(for: Date()))-\(highest)",
+            identifier: "codex-daily-\(Self.dayKey(for: Date()))-\(thresholdKey(highest))",
             title: level.title,
-            body: "今天已消耗 \(Self.percent(dailyIncrease)) 个额度百分点；当前周期累计使用 \(Self.percent(snapshot?.usedPercent ?? 0))%。"
+            body: "今天已消耗 \(Self.percent(dailyIncrease)) 个额度百分点，今日上限 \(Self.percent(dailyCap))%；当前周期累计使用 \(Self.percent(snapshot?.usedPercent ?? 0))%。"
         )
+    }
+
+    private func thresholdKey(_ value: Double) -> String {
+        String(format: "%.1f", value)
     }
 
     private func requestNotificationPermission() {

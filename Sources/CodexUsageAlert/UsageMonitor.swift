@@ -47,11 +47,15 @@ final class UsageMonitor: ObservableObject {
     @Published var isRefreshing = false
     @Published var notificationStatus = "未测试"
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @Published private(set) var codexSelectionName: String?
+    @Published private(set) var shouldOfferCodexSelection = false
     @Published private(set) var refreshSchedule: RefreshSchedule
     @Published private(set) var dailyRefreshTime: Date
     @Published private(set) var tokenUnitStyle: TokenUnitStyle
 
     private let defaults = UserDefaults.standard
+    private let codexAccessStore = CodexAccessStore()
+    private var codexGrant: CodexExecutableGrant?
     private var timer: Timer?
 
     init() {
@@ -68,6 +72,9 @@ final class UsageMonitor: ObservableObject {
         tokenUnitStyle = TokenUnitStyle(
             rawValue: defaults.string(forKey: "tokenUnitStyle") ?? ""
         ) ?? .chinese
+        codexGrant = codexAccessStore.loadGrant()
+        codexSelectionName = codexGrant?.displayName
+        shouldOfferCodexSelection = Self.isRunningInAppSandbox && codexGrant == nil
 
         requestNotificationPermission()
         refresh()
@@ -91,6 +98,10 @@ final class UsageMonitor: ObservableObject {
             return "每天 \(dailyRefreshTime.formatted(.dateTime.hour().minute())) 更新"
         }
         return "\(refreshSchedule.title)更新"
+    }
+
+    var codexSourceSummary: String {
+        codexSelectionName ?? "自动查找本机 Codex"
     }
 
     func setRefreshSchedule(_ schedule: RefreshSchedule) {
@@ -135,14 +146,21 @@ final class UsageMonitor: ObservableObject {
         guard !isRefreshing else { return }
         isRefreshing = true
         errorMessage = nil
+        let grant = codexGrant
 
         DispatchQueue.global(qos: .utility).async {
-            let result = Result { try CodexAppServerClient().fetchDashboardSnapshot() }
+            let result = Result {
+                try CodexAppServerClient(
+                    executableURL: grant?.executableURL,
+                    securityScopedResourceURL: grant?.selectedURL
+                ).fetchDashboardSnapshot()
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.isRefreshing = false
                 switch result {
                 case .success(let dashboard):
+                    self.shouldOfferCodexSelection = false
                     self.accept(dashboard.quota)
                     if let tokenUsage = dashboard.tokenUsage {
                         self.tokenUsage = tokenUsage
@@ -150,9 +168,33 @@ final class UsageMonitor: ObservableObject {
                     self.tokenUsageErrorMessage = dashboard.tokenUsageError
                 case .failure(let error):
                     self.errorMessage = error.localizedDescription
+                    if Self.isRunningInAppSandbox || Self.isExecutableNotFound(error) {
+                        self.shouldOfferCodexSelection = true
+                    }
                 }
             }
         }
+    }
+
+    func chooseCodexLocation() {
+        do {
+            guard let grant = try codexAccessStore.chooseGrant() else { return }
+            codexGrant = grant
+            codexSelectionName = grant.displayName
+            shouldOfferCodexSelection = false
+            refresh()
+        } catch {
+            errorMessage = error.localizedDescription
+            shouldOfferCodexSelection = true
+        }
+    }
+
+    func clearCodexLocation() {
+        codexAccessStore.clearGrant()
+        codexGrant = nil
+        codexSelectionName = nil
+        shouldOfferCodexSelection = Self.isRunningInAppSandbox
+        refresh()
     }
 
     func sendTestNotification() {
@@ -377,5 +419,15 @@ final class UsageMonitor: ObservableObject {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
+    }
+
+    private static var isRunningInAppSandbox: Bool {
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }
+
+    private static func isExecutableNotFound(_ error: Error) -> Bool {
+        guard let clientError = error as? CodexUsageClientError else { return false }
+        if case .executableNotFound = clientError { return true }
+        return false
     }
 }

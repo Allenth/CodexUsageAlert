@@ -25,13 +25,19 @@ public enum CodexUsageClientError: LocalizedError {
 
 public struct CodexAppServerClient: Sendable {
     public let executableURL: URL
+    public let securityScopedResourceURL: URL?
     public let timeout: TimeInterval
 
-    public init(executableURL: URL? = nil, timeout: TimeInterval = 15) throws {
+    public init(
+        executableURL: URL? = nil,
+        securityScopedResourceURL: URL? = nil,
+        timeout: TimeInterval = 15
+    ) throws {
         guard let resolved = executableURL ?? Self.resolveExecutable() else {
             throw CodexUsageClientError.executableNotFound
         }
         self.executableURL = resolved
+        self.securityScopedResourceURL = securityScopedResourceURL
         self.timeout = timeout
     }
 
@@ -59,11 +65,42 @@ public struct CodexAppServerClient: Sendable {
         return nil
     }
 
+    public static func resolveExecutable(fromUserSelection selectionURL: URL) -> URL? {
+        let fileManager = FileManager.default
+        let selection = selectionURL.standardizedFileURL
+        let candidates: [URL]
+
+        if selection.pathExtension.lowercased() == "app" {
+            candidates = [
+                selection.appendingPathComponent("Contents/Resources/codex"),
+                selection.appendingPathComponent("Contents/MacOS/codex"),
+            ]
+        } else if selection.hasDirectoryPath {
+            candidates = [
+                selection.appendingPathComponent("codex"),
+                selection.appendingPathComponent("Contents/Resources/codex"),
+                selection.appendingPathComponent("Contents/MacOS/codex"),
+            ]
+        } else {
+            candidates = [selection]
+        }
+
+        return candidates.first(where: { fileManager.isExecutableFile(atPath: $0.path) })
+    }
+
     public func fetchSnapshot() throws -> UsageSnapshot {
         try fetchDashboardSnapshot().quota
     }
 
     public func fetchDashboardSnapshot() throws -> UsageDashboardSnapshot {
+        let didStartSecurityScope = securityScopedResourceURL?
+            .startAccessingSecurityScopedResource() ?? false
+        defer {
+            if didStartSecurityScope {
+                securityScopedResourceURL?.stopAccessingSecurityScopedResource()
+            }
+        }
+
         let process = Process()
         let input = Pipe()
         let output = Pipe()

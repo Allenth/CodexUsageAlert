@@ -232,6 +232,10 @@ private struct UsagePopover: View {
                     ErrorBanner(message: error)
                 }
 
+                if monitor.shouldOfferCodexSelection {
+                    CodexAccessCard(monitor: monitor)
+                }
+
                 controls
 
                 footer
@@ -512,6 +516,36 @@ private struct RefreshSettingsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Codex 数据来源")
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.8))
+
+                    HStack(spacing: 10) {
+                        Image(systemName: "externaldrive.badge.checkmark")
+                            .foregroundStyle(.cyan)
+                        Text(monitor.codexSourceSummary)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(1)
+                        Spacer()
+                        Button("选择…") {
+                            monitor.chooseCodexLocation()
+                        }
+                        .buttonStyle(.bordered)
+
+                        if monitor.codexSelectionName != nil {
+                            Button("恢复自动") {
+                                monitor.clearCodexLocation()
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.white.opacity(0.55))
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
                 }
 
                 Divider().overlay(Color.white.opacity(0.08))
@@ -1060,5 +1094,40 @@ private struct ErrorBanner: View {
         .padding(10)
         .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.18), lineWidth: 1))
+    }
+}
+
+private struct CodexAccessCard: View {
+    @ObservedObject var monitor: UsageMonitor
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.open.display")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.cyan)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("需要授权 Codex 数据来源")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("请选择 Codex.app、ChatGPT.app 或 codex 程序。")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+
+            Spacer()
+
+            Button("选择…") {
+                monitor.chooseCodexLocation()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.cyan.opacity(0.75))
+        }
+        .padding(12)
+        .background(Color.cyan.opacity(0.08), in: RoundedRectangle(cornerRadius: 11))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11)
+                .stroke(Color.cyan.opacity(0.18), lineWidth: 1)
+        )
     }
 }

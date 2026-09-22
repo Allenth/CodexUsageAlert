@@ -1,5 +1,5 @@
 Codex Usage Alert / Codex 用量预警
-版本 0.2.2（build 22）
+版本 0.2.3（build 23）
 
 一、安装
 
@@ -28,6 +28,8 @@ Codex Usage Alert / Codex 用量预警
 6. 建议开启“登录时自动启动”，以便持续监控用量。
 7. 关闭主窗口或按 Command + Q 后，应用仍会在菜单栏后台监控；点击菜单栏面板中的电源按钮才会完全退出。
 8. 设置底部会显示当前版本号和 Build，点击“查看更新记录”可以查看历次更新内容。
+
+Token 每日统计会自动适配本机日期：服务端最新一条显示为今天、上一条显示为昨天，图表和本月累计使用相同的日期口径。
 
 沙盒版首次授权登录资料时，会自动在文件选择器中显示隐藏的“.codex”文件夹。选中“.codex”后点击“授权读取”即可，不需要使用快捷键或手动输入路径。
 
@@ -74,6 +76,8 @@ English Quick Start
 6. Open Preferences to choose System, Simplified Chinese, or English; set the refresh schedule; and choose Chinese or English token units.
 7. Closing the dashboard or pressing Command-Q keeps monitoring active in the menu bar. Use the power button in the menu bar panel to quit completely.
 8. Preferences shows the current version and build. Select View updates to see the complete update history.
+
+Daily token totals are aligned to this Mac: the latest server entry is shown as today, the previous entry as yesterday, and the chart and month-to-date total use the same date alignment.
 
 On first use in the sandbox build, the file picker automatically reveals the hidden .codex folder. Select .codex and click Allow Access; you do not need to type the path manually.
 

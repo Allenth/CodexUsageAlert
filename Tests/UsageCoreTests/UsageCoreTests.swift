@@ -169,11 +169,11 @@ final class UsageCoreTests: XCTestCase {
         XCTAssertEqual(usage.dailyUsageBuckets.first?.tokens, 12_345)
     }
 
-    func testMonthToDateTokenAggregationExcludesOtherMonthsAndFutureDays() {
+    func testMonthToDateTokenAggregationUsesAdaptedLocalDates() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let referenceDate = calendar.date(
-            from: DateComponents(year: 2026, month: 9, day: 22)
+            from: DateComponents(year: 2026, month: 9, day: 1)
         )!
         let usage = AccountTokenUsage(
             summary: TokenUsageSummary(
@@ -184,28 +184,34 @@ final class UsageCoreTests: XCTestCase {
                 longestStreakDays: nil
             ),
             dailyUsageBuckets: [
-                DailyTokenUsage(startDate: "2026-08-31", tokens: 100),
-                DailyTokenUsage(startDate: "2026-09-01", tokens: 200),
-                DailyTokenUsage(startDate: "2026-09-20", tokens: 500),
-                DailyTokenUsage(startDate: "2026-09-23", tokens: 900),
+                DailyTokenUsage(startDate: "2026-08-30", tokens: 100),
+                DailyTokenUsage(startDate: "2026-08-31", tokens: 900),
             ]
         )
 
         XCTAssertEqual(
             usage.monthToDateTokens(through: referenceDate, calendar: calendar),
-            700
+            900
         )
         XCTAssertEqual(
             usage.peakDailyTokensThisMonth(through: referenceDate, calendar: calendar),
-            500
+            900
         )
         XCTAssertEqual(
             usage.latestUsageDate(through: referenceDate, calendar: calendar),
-            "2026-09-20"
+            "2026-08-31"
+        )
+        XCTAssertEqual(
+            usage.adaptedDateKey(
+                for: usage.latestDailyBucket!,
+                through: referenceDate,
+                calendar: calendar
+            ),
+            "2026-09-01"
         )
     }
 
-    func testTodayAndYesterdayTokenBucketsUseRawServerDates() {
+    func testTodayAndYesterdayUseLatestTwoServerBuckets() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let referenceDate = calendar.date(
@@ -220,13 +226,29 @@ final class UsageCoreTests: XCTestCase {
                 longestStreakDays: nil
             ),
             dailyUsageBuckets: [
-                DailyTokenUsage(startDate: "2026-09-22", tokens: 300),
-                DailyTokenUsage(startDate: "2026-09-23", tokens: 900),
+                DailyTokenUsage(startDate: "2026-09-21", tokens: 300),
+                DailyTokenUsage(startDate: "2026-09-22", tokens: 900),
             ]
         )
 
-        XCTAssertEqual(usage.todayTokens(now: referenceDate, calendar: calendar), 900)
-        XCTAssertEqual(usage.yesterdayTokens(now: referenceDate, calendar: calendar), 300)
+        XCTAssertEqual(usage.todayTokens(), 900)
+        XCTAssertEqual(usage.yesterdayTokens(), 300)
+        XCTAssertEqual(
+            usage.adaptedDateKey(
+                for: usage.latestDailyBucket!,
+                through: referenceDate,
+                calendar: calendar
+            ),
+            "2026-09-23"
+        )
+        XCTAssertEqual(
+            usage.adaptedDateKey(
+                for: usage.previousDailyBucket!,
+                through: referenceDate,
+                calendar: calendar
+            ),
+            "2026-09-22"
+        )
     }
 
     func testResolvesUserSelectedCodexExecutable() throws {

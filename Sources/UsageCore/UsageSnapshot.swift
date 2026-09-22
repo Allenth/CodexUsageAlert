@@ -70,6 +70,20 @@ public struct AccountTokenUsage: Codable, Equatable, Sendable {
         self.dailyUsageBuckets = dailyUsageBuckets
     }
 
+    public var orderedDailyUsageBuckets: [DailyTokenUsage] {
+        dailyUsageBuckets.sorted { $0.startDate < $1.startDate }
+    }
+
+    public var latestDailyBucket: DailyTokenUsage? {
+        orderedDailyUsageBuckets.last
+    }
+
+    public var previousDailyBucket: DailyTokenUsage? {
+        let buckets = orderedDailyUsageBuckets
+        guard buckets.count >= 2 else { return nil }
+        return buckets[buckets.count - 2]
+    }
+
     public func monthToDateTokens(
         through date: Date = Date(),
         calendar: Calendar = .current
@@ -100,46 +114,74 @@ public struct AccountTokenUsage: Codable, Equatable, Sendable {
         return dailyUsageBuckets.first(where: { $0.startDate == key })?.tokens
     }
 
-    public func todayTokens(
-        now: Date = Date(),
-        calendar: Calendar = .current
-    ) -> Int64? {
-        tokens(on: now, calendar: calendar)
+    public func todayTokens() -> Int64? {
+        latestDailyBucket?.tokens
     }
 
-    public func yesterdayTokens(
-        now: Date = Date(),
-        calendar: Calendar = .current
-    ) -> Int64? {
-        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: now) else {
-            return nil
-        }
-        return tokens(on: yesterday, calendar: calendar)
+    public func yesterdayTokens() -> Int64? {
+        previousDailyBucket?.tokens
     }
 
     public func latestUsageDate(
         through date: Date = Date(),
         calendar: Calendar = .current
     ) -> String? {
-        monthToDateBuckets(through: date, calendar: calendar)
-            .map(\.startDate)
-            .max()
+        latestDailyBucket?.startDate
+    }
+
+    public func adaptedDateKey(
+        for bucket: DailyTokenUsage,
+        through date: Date = Date(),
+        calendar: Calendar = .current
+    ) -> String {
+        guard let adaptedDate = adaptedDate(for: bucket, through: date, calendar: calendar) else {
+            return bucket.startDate
+        }
+        let components = calendar.dateComponents([.year, .month, .day], from: adaptedDate)
+        guard let year = components.year,
+              let month = components.month,
+              let day = components.day else { return bucket.startDate }
+        return String(format: "%04d-%02d-%02d", year, month, day)
     }
 
     private func monthToDateBuckets(
         through date: Date,
         calendar: Calendar
     ) -> [DailyTokenUsage] {
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
-        guard let year = components.year,
-              let month = components.month,
-              let day = components.day else { return [] }
-
-        let monthPrefix = String(format: "%04d-%02d-", year, month)
-        let todayKey = String(format: "%04d-%02d-%02d", year, month, day)
-        return dailyUsageBuckets.filter {
-            $0.startDate.hasPrefix(monthPrefix) && $0.startDate <= todayKey
+        orderedDailyUsageBuckets.filter { bucket in
+            guard let adaptedDate = adaptedDate(for: bucket, through: date, calendar: calendar) else {
+                return false
+            }
+            return calendar.isDate(adaptedDate, equalTo: date, toGranularity: .month)
+                && adaptedDate <= calendar.startOfDay(for: date)
         }
+    }
+
+    private func adaptedDate(
+        for bucket: DailyTokenUsage,
+        through date: Date,
+        calendar: Calendar
+    ) -> Date? {
+        guard let latestDateKey = latestDailyBucket?.startDate,
+              let latestServerDate = parsedDate(from: latestDateKey, calendar: calendar),
+              let bucketServerDate = parsedDate(from: bucket.startDate, calendar: calendar) else {
+            return nil
+        }
+        let localToday = calendar.startOfDay(for: date)
+        let dayShift = calendar.dateComponents(
+            [.day],
+            from: latestServerDate,
+            to: localToday
+        ).day ?? 0
+        return calendar.date(byAdding: .day, value: dayShift, to: bucketServerDate)
+    }
+
+    private func parsedDate(from key: String, calendar: Calendar) -> Date? {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return calendar.date(
+            from: DateComponents(year: parts[0], month: parts[1], day: parts[2])
+        )
     }
 }
 

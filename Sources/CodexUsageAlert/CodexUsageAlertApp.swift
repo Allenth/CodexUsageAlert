@@ -1211,6 +1211,19 @@ private struct ReleaseNote: Identifiable {
 private enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            build: 23,
+            chineseItems: [
+                "服务端最新 Token 每日统计固定显示为本机今天，上一条显示为昨天。",
+                "图表日期和本月累计同步使用相同的本机日期适配规则。",
+                "保留服务端原始日期用于排查，不再把时区差异显示成今日数据缺失。",
+            ],
+            englishItems: [
+                "Show the latest server daily token total as today and the previous total as yesterday.",
+                "Apply the same local date alignment to chart labels and month-to-date totals.",
+                "Keep raw server dates for diagnostics without presenting timezone differences as missing data.",
+            ]
+        ),
+        ReleaseNote(
             build: 22,
             chineseItems: [
                 "Token 卡片改为显示今日、昨日和本月累计，并为柱状图增加悬停详情。",
@@ -1691,7 +1704,7 @@ private struct TokenUsageCard: View {
     @State private var hoveredBucketID: String?
 
     private var recentBuckets: [DailyTokenUsage] {
-        Array(usage.dailyUsageBuckets.suffix(7))
+        Array(usage.orderedDailyUsageBuckets.suffix(7))
     }
 
     private var maximumTokens: Double {
@@ -1703,8 +1716,7 @@ private struct TokenUsageCard: View {
     }
 
     private var latestBucket: DailyTokenUsage? {
-        guard let latestUsageDate else { return nil }
-        return usage.dailyUsageBuckets.first(where: { $0.startDate == latestUsageDate })
+        usage.latestDailyBucket
     }
 
     private var todayKey: String {
@@ -1715,9 +1727,9 @@ private struct TokenUsageCard: View {
         return formatter.string(from: Date())
     }
 
-    private var isTodayBucketMissing: Bool {
-        guard let latestUsageDate else { return false }
-        return latestUsageDate < todayKey
+    private var isServerDateAdapted: Bool {
+        guard let latestBucket else { return false }
+        return latestBucket.startDate != todayKey
     }
 
     var body: some View {
@@ -1748,9 +1760,10 @@ private struct TokenUsageCard: View {
 
             HStack(spacing: 0) {
                 TokenMetric(
-                    value: usage.todayTokens().map {
-                        TokenCountFormatter.compact($0, style: unitStyle)
-                    } ?? L("待更新", "Pending"),
+                    value: TokenCountFormatter.compact(
+                        usage.todayTokens(),
+                        style: unitStyle
+                    ),
                     label: L("今日用量", "Today"),
                     exactValue: usage.todayTokens()
                 )
@@ -1775,13 +1788,13 @@ private struct TokenUsageCard: View {
             }
             .frame(height: 35)
 
-            if isTodayBucketMissing, let latestUsageDate, let latestBucket {
+            if isServerDateAdapted, let latestUsageDate {
                 HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "clock.badge.exclamationmark.fill")
-                        .foregroundStyle(.orange.opacity(0.9))
+                    Image(systemName: "calendar.badge.clock")
+                        .foregroundStyle(.cyan.opacity(0.85))
                     Text(L(
-                        "服务端最新每日统计为 \(shortDate(latestUsageDate))，用量 \(TokenCountFormatter.compact(latestBucket.tokens, style: unitStyle))；本机系统日期为 \(shortDate(todayKey))。服务端未说明统计日期所属时区，因此不转换日期，也不会把缺失的今日数据记为 0。",
-                        "The latest server daily total is \(TokenCountFormatter.compact(latestBucket.tokens, style: unitStyle)) for \(shortDate(latestUsageDate)); the local date is \(shortDate(todayKey)). Its timezone is undocumented, so dates are not converted and today is not filled with zero."
+                        "日期已按本机适配：最新统计显示为今日，上一条显示为昨日。",
+                        "Dates follow this Mac: the latest total is shown as today and the previous total as yesterday."
                     ))
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1789,11 +1802,11 @@ private struct TokenUsageCard: View {
                 .foregroundStyle(.white.opacity(0.52))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
-                .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color.cyan.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
                 .help(
                     L(
-                        "数据源：Codex App Server account/usage/read。服务端 dailyUsageBuckets.startDate 原值为 \(latestUsageDate)，Token 为 \(latestBucket.tokens.formatted())；本机系统日期为 \(todayKey)，官方文档未说明该日期所属时区。",
-                        "Source: Codex App Server account/usage/read. dailyUsageBuckets.startDate is \(latestUsageDate) with \(latestBucket.tokens.formatted()) tokens; the local date is \(todayKey), and the server date timezone is undocumented."
+                        "数据源：Codex App Server account/usage/read。服务端最新 startDate 原值为 \(latestUsageDate)，本机系统日期为 \(todayKey)；官方未说明服务端日期时区，应用按最新条目强制对齐今日。",
+                        "Source: Codex App Server account/usage/read. The latest raw startDate is \(latestUsageDate), while this Mac reports \(todayKey). Because the server timezone is undocumented, the app aligns the latest entry with today."
                     )
                 )
             }
@@ -1829,7 +1842,7 @@ private struct TokenUsageCard: View {
                                             )
                                         )
                                         .shadow(color: .cyan.opacity(0.22), radius: 3)
-                                    Text(shortDate(bucket.startDate))
+                                    Text(shortDate(adaptedDateKey(for: bucket)))
                                         .font(.system(size: 7.5, weight: .medium, design: .rounded))
                                         .foregroundStyle(.white.opacity(0.35))
                                 }
@@ -1846,7 +1859,11 @@ private struct TokenUsageCard: View {
 
                         if let hoveredBucket,
                            let index = recentBuckets.firstIndex(where: { $0.id == hoveredBucket.id }) {
-                            TokenBarTooltip(bucket: hoveredBucket, unitStyle: unitStyle)
+                            TokenBarTooltip(
+                                bucket: hoveredBucket,
+                                displayDate: adaptedDateKey(for: hoveredBucket),
+                                unitStyle: unitStyle
+                            )
                                 .frame(width: 126)
                                 .offset(
                                     x: tooltipOffset(index: index, chartWidth: geometry.size.width),
@@ -1891,15 +1908,20 @@ private struct TokenUsageCard: View {
         }
         return "\(components[1])/\(components[2])"
     }
+
+    private func adaptedDateKey(for bucket: DailyTokenUsage) -> String {
+        usage.adaptedDateKey(for: bucket)
+    }
 }
 
 private struct TokenBarTooltip: View {
     let bucket: DailyTokenUsage
+    let displayDate: String
     let unitStyle: TokenUnitStyle
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(bucket.startDate)
+            Text(displayDate)
                 .font(.system(size: 8, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.58))
             Text(TokenCountFormatter.compact(bucket.tokens, style: unitStyle))

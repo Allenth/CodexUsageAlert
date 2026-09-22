@@ -82,9 +82,12 @@ final class CodexAccessStore {
 
     func chooseGrant() throws -> CodexExecutableGrant? {
         let panel = NSOpenPanel()
-        panel.title = "选择 Codex 或 ChatGPT 应用"
-        panel.message = "请选择 Codex.app、ChatGPT.app，或 codex 可执行文件。"
-        panel.prompt = "授权读取"
+        panel.title = L("选择 Codex 或 ChatGPT 应用", "Choose the Codex or ChatGPT app")
+        panel.message = L(
+            "请选择 Codex.app、ChatGPT.app，或 codex 可执行文件。",
+            "Choose Codex.app, ChatGPT.app, or the codex executable."
+        )
+        panel.prompt = L("授权读取", "Allow Access")
         panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
@@ -145,9 +148,12 @@ final class CodexAccessStore {
 
     func chooseCodexHomeGrant() throws -> CodexHomeGrant? {
         let panel = NSOpenPanel()
-        panel.title = "选择 Codex 登录资料文件夹"
-        panel.message = "请选择包含 auth.json 的 .codex 文件夹。可按 ⌘⇧G 输入 ~/.codex。"
-        panel.prompt = "授权读取"
+        panel.title = L("选择 Codex 登录资料文件夹", "Choose the Codex sign-in data folder")
+        panel.message = L(
+            "请选择包含 auth.json 的 .codex 文件夹。可按 ⌘⇧G 输入 ~/.codex。",
+            "Choose the .codex folder containing auth.json. Press ⌘⇧G and enter ~/.codex."
+        )
+        panel.prompt = L("授权读取", "Allow Access")
         panel.directoryURL = URL(fileURLWithPath: "/Users", isDirectory: true)
         panel.canChooseFiles = false
         panel.canChooseDirectories = true

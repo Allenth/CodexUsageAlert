@@ -26,6 +26,8 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 cp "$PROJECT_DIR/.build/release/CodexUsageAlert" "$APP_DIR/Contents/MacOS/CodexUsageAlert"
 cp "$PROJECT_DIR/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
+cp -R "$PROJECT_DIR/Resources/en.lproj" "$APP_DIR/Contents/Resources/"
+cp -R "$PROJECT_DIR/Resources/zh-Hans.lproj" "$APP_DIR/Contents/Resources/"
 
 /usr/libexec/PlistBuddy \
   -c "Set :CFBundleIdentifier com.huijing.codex-usage-alert.sandbox-prototype" \

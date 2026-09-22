@@ -13,16 +13,6 @@ enum RefreshSchedule: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
-        switch self {
-        case .fiveMinutes: return "每 5 分钟"
-        case .fifteenMinutes: return "每 15 分钟"
-        case .thirtyMinutes: return "每 30 分钟"
-        case .hourly: return "每 1 小时"
-        case .daily: return "每天固定时间"
-        }
-    }
-
     var interval: TimeInterval? {
         switch self {
         case .fiveMinutes: return 5 * 60
@@ -46,7 +36,7 @@ final class UsageMonitor: ObservableObject {
     @Published var errorMessage: String?
     @Published var isRefreshing = false
     @Published private(set) var isLaunchingCodex = false
-    @Published var notificationStatus = "未测试"
+    @Published var notificationStatus = "unknown"
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published private(set) var codexSelectionName: String?
     @Published private(set) var codexHomeSelectionName: String?
@@ -101,17 +91,23 @@ final class UsageMonitor: ObservableObject {
 
     var refreshSummary: String {
         if refreshSchedule == .daily {
-            return "每天 \(dailyRefreshTime.formatted(.dateTime.hour().minute())) 更新"
+            return L(
+                "每天 \(AppLocalization.shared.time(dailyRefreshTime)) 更新",
+                "Daily at \(AppLocalization.shared.time(dailyRefreshTime))"
+            )
         }
-        return "\(refreshSchedule.title)更新"
+        return AppLocalization.shared.refreshScheduleTitle(refreshSchedule)
     }
 
     var codexSourceSummary: String {
-        codexSelectionName ?? "自动查找本机 Codex"
+        codexSelectionName ?? L("自动查找本机 Codex", "Find Codex automatically")
     }
 
     var codexHomeSourceSummary: String {
-        codexHomeSelectionName ?? "尚未授权 Codex 登录资料"
+        codexHomeSelectionName ?? L(
+            "尚未授权 Codex 登录资料",
+            "Codex sign-in data not authorized"
+        )
     }
 
     func setRefreshSchedule(_ schedule: RefreshSchedule) {
@@ -179,7 +175,7 @@ final class UsageMonitor: ObservableObject {
                     }
                     self.tokenUsageErrorMessage = dashboard.tokenUsageError
                 case .failure(let error):
-                    self.errorMessage = error.localizedDescription
+                    self.errorMessage = self.localizedErrorMessage(error)
                     if Self.isRunningInAppSandbox || Self.isExecutableNotFound(error) {
                         self.shouldOfferCodexSelection = true
                     }
@@ -194,7 +190,10 @@ final class UsageMonitor: ObservableObject {
 
     func openCodexApplication() {
         guard let applicationURL = Self.codexApplicationURL else {
-            errorMessage = "未找到 Codex/ChatGPT 应用。请先安装并登录，然后重新刷新。"
+            errorMessage = L(
+                "未找到 Codex/ChatGPT 应用。请先安装并登录，然后重新刷新。",
+                "Codex/ChatGPT was not found. Install and sign in, then refresh again."
+            )
             return
         }
 
@@ -209,11 +208,17 @@ final class UsageMonitor: ObservableObject {
                 guard let self else { return }
                 if let error {
                     self.isLaunchingCodex = false
-                    self.errorMessage = "无法打开 Codex/ChatGPT：\(error.localizedDescription)"
+                    self.errorMessage = L(
+                        "无法打开 Codex/ChatGPT：\(error.localizedDescription)",
+                        "Could not open Codex/ChatGPT: \(error.localizedDescription)"
+                    )
                     return
                 }
 
-                self.errorMessage = "Codex/ChatGPT 已启动，正在等待登录状态就绪…"
+                self.errorMessage = L(
+                    "Codex/ChatGPT 已启动，正在等待登录状态就绪…",
+                    "Codex/ChatGPT is open. Waiting for sign-in to become ready…"
+                )
                 DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
                     guard let self else { return }
                     self.isLaunchingCodex = false
@@ -231,7 +236,7 @@ final class UsageMonitor: ObservableObject {
             shouldOfferCodexSelection = Self.isRunningInAppSandbox && codexHomeGrant == nil
             refresh()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = localizedErrorMessage(error)
             shouldOfferCodexSelection = true
         }
     }
@@ -244,7 +249,7 @@ final class UsageMonitor: ObservableObject {
             shouldOfferCodexSelection = Self.isRunningInAppSandbox && codexGrant == nil
             refresh()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = localizedErrorMessage(error)
             shouldOfferCodexSelection = true
         }
     }
@@ -268,8 +273,11 @@ final class UsageMonitor: ObservableObject {
     func sendTestNotification() {
         sendNotification(
             identifier: "codex-usage-test-\(UUID().uuidString)",
-            title: "Codex 用量预警测试",
-            body: "系统通知工作正常。达到 5%、10%、15% 或 20% 的当日增量时会提醒你。"
+            title: L("Codex 用量预警测试", "Codex Usage Alert Test"),
+            body: L(
+                "系统通知工作正常。达到 5%、10%、15% 或 20% 的当日增量时会提醒你。",
+                "Notifications are working. You will be alerted at 5%, 10%, 15%, and the daily cap."
+            )
         )
     }
 
@@ -283,7 +291,10 @@ final class UsageMonitor: ObservableObject {
             launchAtLogin = SMAppService.mainApp.status == .enabled
         } catch {
             launchAtLogin = SMAppService.mainApp.status == .enabled
-            errorMessage = "无法更新开机启动设置：\(error.localizedDescription)"
+            errorMessage = L(
+                "无法更新开机启动设置：\(error.localizedDescription)",
+                "Could not update the launch-at-login setting: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -484,8 +495,11 @@ final class UsageMonitor: ObservableObject {
         let level = DailyUsagePolicy.level(for: dailyIncrease, dailyCap: dailyCap)
         sendNotification(
             identifier: "codex-daily-\(Self.dayKey(for: Date()))-\(thresholdKey(highest))",
-            title: level.title,
-            body: "今天已消耗 \(Self.percent(dailyIncrease)) 个额度百分点，今日上限 \(Self.percent(dailyCap))%；当前周期累计使用 \(Self.percent(snapshot?.usedPercent ?? 0))%。"
+            title: AppLocalization.shared.alertLevelTitle(level),
+            body: L(
+                "今天已消耗 \(Self.percent(dailyIncrease)) 个额度百分点，今日上限 \(Self.percent(dailyCap))%；当前周期累计使用 \(Self.percent(snapshot?.usedPercent ?? 0))%。",
+                "Today you used \(Self.percent(dailyIncrease)) percentage points of a \(Self.percent(dailyCap))% cap. Current window usage is \(Self.percent(snapshot?.usedPercent ?? 0))%."
+            )
         )
     }
 
@@ -499,7 +513,7 @@ final class UsageMonitor: ObservableObject {
                 if let error {
                     self?.notificationStatus = error.localizedDescription
                 } else {
-                    self?.notificationStatus = granted ? "已允许" : "未允许"
+                    self?.notificationStatus = granted ? "allowed" : "denied"
                 }
             }
         }
@@ -513,9 +527,58 @@ final class UsageMonitor: ObservableObject {
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { [weak self] error in
             DispatchQueue.main.async {
-                self?.notificationStatus = error?.localizedDescription ?? "已发送"
+                self?.notificationStatus = error?.localizedDescription ?? "sent"
             }
         }
+    }
+
+    private func localizedErrorMessage(_ error: Error) -> String {
+        if let error = error as? CodexUsageClientError {
+            switch error {
+            case .executableNotFound:
+                return L(
+                    "未找到 Codex CLI。请先安装并登录 Codex。",
+                    "Codex CLI was not found. Install and sign in to Codex first."
+                )
+            case .serverExited:
+                return L(
+                    "Codex App Server 在返回用量前退出。",
+                    "Codex App Server exited before returning usage data."
+                )
+            case .timedOut:
+                return L("读取 Codex 用量超时。", "Timed out while reading Codex usage.")
+            case .invalidResponse(let detail):
+                return L(
+                    "Codex 返回了无法识别的数据：\(detail)",
+                    "Codex returned an unrecognized response: \(detail)"
+                )
+            case .serverError(let detail):
+                if detail.localizedCaseInsensitiveContains("failed to fetch codex rate limits") {
+                    return L(
+                        "Codex 尚未就绪。请先打开 Codex/ChatGPT 并确认已登录，然后返回刷新。",
+                        "Codex is not ready. Open Codex/ChatGPT, confirm you are signed in, then refresh."
+                    )
+                }
+                return L("Codex App Server 错误：\(detail)", "Codex App Server error: \(detail)")
+            }
+        }
+
+        if let error = error as? CodexAccessStoreError {
+            switch error {
+            case .unsupportedSelection:
+                return L(
+                    "所选项目中没有找到可执行的 Codex 程序。",
+                    "No executable Codex app was found in the selected item."
+                )
+            case .missingCodexAuthentication:
+                return L(
+                    "所选文件夹中没有找到 Codex 登录资料（auth.json）。",
+                    "Codex sign-in data (auth.json) was not found in the selected folder."
+                )
+            }
+        }
+
+        return error.localizedDescription
     }
 
     static func percent(_ value: Double) -> String {

@@ -28,6 +28,8 @@ cp "$PROJECT_DIR/.build/release/CodexUsageAlert" "$APP_DIR/Contents/MacOS/CodexU
 cp "$PROJECT_DIR/.build/release/codex-usage" "$APP_DIR/Contents/Helpers/codex-usage"
 cp "$PROJECT_DIR/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
+cp -R "$PROJECT_DIR/Resources/en.lproj" "$APP_DIR/Contents/Resources/"
+cp -R "$PROJECT_DIR/Resources/zh-Hans.lproj" "$APP_DIR/Contents/Resources/"
 
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
   codesign --force --deep --sign - "$APP_DIR"

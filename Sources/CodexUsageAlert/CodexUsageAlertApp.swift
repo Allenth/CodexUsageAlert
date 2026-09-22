@@ -6,16 +6,19 @@ import UsageCore
 struct CodexUsageAlertApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var monitor = UsageMonitor.shared
+    @StateObject private var localization = AppLocalization.shared
 
     var body: some Scene {
-        WindowGroup("Codex 用量预警", id: "dashboard") {
+        WindowGroup("Codex Usage Alert", id: "dashboard") {
             UsagePopover(monitor: monitor)
+                .environmentObject(localization)
         }
         .defaultSize(width: 380, height: 820)
         .windowResizability(.contentSize)
 
         MenuBarExtra {
             UsagePopover(monitor: monitor)
+                .environmentObject(localization)
         } label: {
             HStack(spacing: 4) {
                 Image(nsImage: MenuBarIcon.image)
@@ -216,6 +219,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 
 private struct UsagePopover: View {
     @ObservedObject var monitor: UsageMonitor
+    @EnvironmentObject private var localization: AppLocalization
     @State private var showingSettings = false
 
     var body: some View {
@@ -241,29 +245,35 @@ private struct UsagePopover: View {
 
                 HStack(spacing: 24) {
                     UsageGauge(
-                        usedPercent: monitor.snapshot?.usedPercent ?? 0,
+                        progressPercent: dailyProgressPercent,
+                        primaryPercent: monitor.dailyIncrease,
+                        label: L("本机今日增量", "Today's local increase"),
+                        secondaryText: L(
+                            "今日上限 \(UsageMonitor.percent(todayCap))%",
+                            "Daily cap \(UsageMonitor.percent(todayCap))%"
+                        ),
                         color: statusColor,
                         isRefreshing: monitor.isRefreshing
                     )
 
                     VStack(alignment: .leading, spacing: 13) {
                         MetricRow(
-                            icon: "arrow.up.right",
-                            label: "本机今日增量",
-                            value: "\(UsageMonitor.percent(monitor.dailyIncrease))%",
+                            icon: "gauge.with.dots.needle.33percent",
+                            label: L("今日剩余", "Today left"),
+                            value: "\(UsageMonitor.percent(todayRemaining))%",
                             tint: statusColor
                         )
                         MetricRow(
                             icon: "chart.pie.fill",
-                            label: "周期剩余",
-                            value: "\(UsageMonitor.percent(monitor.snapshot?.remainingPercent ?? 100))%",
+                            label: L("周期已用", "Window used"),
+                            value: "\(UsageMonitor.percent(monitor.snapshot?.usedPercent ?? 0))%",
                             tint: .cyan
                         )
                         MetricRow(
-                            icon: notificationIcon,
-                            label: "通知状态",
-                            value: notificationSummary,
-                            tint: .orange
+                            icon: "chart.pie.fill",
+                            label: L("周期剩余", "Window left"),
+                            value: "\(UsageMonitor.percent(monitor.snapshot?.remainingPercent ?? 100))%",
+                            tint: .cyan
                         )
                     }
                 }
@@ -290,21 +300,24 @@ private struct UsagePopover: View {
                     HStack(spacing: 9) {
                         StatTile(
                             icon: "calendar.badge.clock",
-                            value: snapshot.resetsAt.formatted(.dateTime.month().day()),
-                            detail: snapshot.resetsAt.formatted(.dateTime.hour().minute()),
-                            label: "下次重置"
+                            value: localization.date(snapshot.resetsAt),
+                            detail: localization.time(snapshot.resetsAt),
+                            label: L("下次重置", "Next reset")
                         )
                         StatTile(
                             icon: "clock.arrow.circlepath",
-                            value: "\(UsageMonitor.percent(snapshot.windowDays)) 天",
-                            detail: "滚动额度",
-                            label: "额度周期"
+                            value: L(
+                                "\(UsageMonitor.percent(snapshot.windowDays)) 天",
+                                "\(UsageMonitor.percent(snapshot.windowDays)) days"
+                            ),
+                            detail: L("滚动额度", "Rolling window"),
+                            label: L("额度周期", "Usage window")
                         )
                         StatTile(
                             icon: "bell.badge.fill",
                             value: "5 · 10 · 15",
-                            detail: "20% 基础上限",
-                            label: "预警刻度"
+                            detail: L("20% 基础上限", "20% base cap"),
+                            label: L("预警刻度", "Alert levels")
                         )
                     }
                 }
@@ -364,7 +377,7 @@ private struct UsagePopover: View {
                 .shadow(color: .cyan.opacity(0.2), radius: 8, y: 3)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Codex 用量预警")
+                Text(L("Codex 用量预警", "Codex Usage Alert"))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(lastUpdatedText)
@@ -379,7 +392,7 @@ private struct UsagePopover: View {
                     .fill(statusColor)
                     .frame(width: 6, height: 6)
                     .shadow(color: statusColor.opacity(0.75), radius: 4)
-                Text(monitor.level.title)
+                Text(localization.alertLevelTitle(monitor.level))
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(.white.opacity(0.9))
             }
@@ -402,7 +415,9 @@ private struct UsagePopover: View {
                         } else {
                             Image(systemName: "arrow.clockwise")
                         }
-                        Text(monitor.isRefreshing ? "正在读取" : "立即刷新")
+                        Text(monitor.isRefreshing
+                             ? L("正在读取", "Reading…")
+                             : L("立即刷新", "Refresh now"))
                     }
                     .frame(maxWidth: .infinity)
                     .foregroundStyle(.white)
@@ -415,7 +430,7 @@ private struct UsagePopover: View {
                 Button {
                     monitor.sendTestNotification()
                 } label: {
-                    Label("测试通知", systemImage: "bell.fill")
+                    Label(L("测试通知", "Test alert"), systemImage: "bell.fill")
                         .frame(maxWidth: .infinity)
                         .foregroundStyle(.white.opacity(0.9))
                 }
@@ -426,7 +441,7 @@ private struct UsagePopover: View {
 
             HStack {
                 Toggle(
-                    "登录时自动启动",
+                    L("登录时自动启动", "Launch at login"),
                     isOn: Binding(
                         get: { monitor.launchAtLogin },
                         set: { monitor.setLaunchAtLogin($0) }
@@ -439,6 +454,11 @@ private struct UsagePopover: View {
 
                 Spacer()
 
+                Label(notificationSummary, systemImage: notificationIcon)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.46))
+                    .lineLimit(1)
+
                 Button {
                     showingSettings = true
                 } label: {
@@ -446,7 +466,7 @@ private struct UsagePopover: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white.opacity(0.62))
-                .help("刷新与通知设置")
+                .help(L("刷新与通知设置", "Refresh, language, and notification settings"))
 
                 Button {
                     NSApplication.shared.terminate(nil)
@@ -455,7 +475,7 @@ private struct UsagePopover: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white.opacity(0.62))
-                .help("退出应用")
+                .help(L("退出应用", "Quit"))
             }
             .padding(.horizontal, 3)
         }
@@ -464,9 +484,15 @@ private struct UsagePopover: View {
     private var footer: some View {
         HStack(spacing: 5) {
             Image(systemName: "lock.shield.fill")
-            Text("额度来自 Codex 服务端 · 日增量本机计算")
+            Text(L(
+                "额度来自 Codex 服务端 · 日增量本机计算",
+                "Quota from Codex · Daily increase calculated locally"
+            ))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
             Spacer()
             Text(monitor.refreshSummary)
+                .lineLimit(1)
         }
         .font(.system(size: 9.5))
         .foregroundStyle(.white.opacity(0.38))
@@ -482,34 +508,57 @@ private struct UsagePopover: View {
     }
 
     private var lastUpdatedText: String {
-        guard let date = monitor.snapshot?.fetchedAt else { return "正在连接本机 Codex…" }
-        return "更新于 \(date.formatted(.dateTime.hour().minute()))"
+        guard let date = monitor.snapshot?.fetchedAt else {
+            return L("正在连接本机 Codex…", "Connecting to local Codex…")
+        }
+        return L(
+            "更新于 \(localization.time(date))",
+            "Updated \(localization.time(date))"
+        )
     }
 
     private var notificationSummary: String {
         let normalized = monitor.notificationStatus.lowercased()
         if normalized.contains("not allowed") || normalized.contains("denied") {
-            return "未允许"
+            return L("未允许", "Not allowed")
         }
         switch monitor.notificationStatus {
-        case "已允许", "已发送": return "已开启"
-        case "未允许": return "未允许"
-        default: return monitor.notificationStatus.count > 8 ? "需检查" : monitor.notificationStatus
+        case "allowed", "sent": return L("已开启", "On")
+        case "denied": return L("未允许", "Not allowed")
+        case "unknown": return L("未测试", "Not tested")
+        default: return monitor.notificationStatus.count > 8
+            ? L("需检查", "Check")
+            : monitor.notificationStatus
         }
     }
 
     private var notificationIcon: String {
-        notificationSummary == "未允许" ? "bell.slash.fill" : "bell.fill"
+        monitor.notificationStatus == "denied" ? "bell.slash.fill" : "bell.fill"
+    }
+
+    private var todayCap: Double {
+        monitor.rolloverBudget?.todayAvailablePercent ?? 20
+    }
+
+    private var todayRemaining: Double {
+        max(0, todayCap - monitor.dailyIncrease)
+    }
+
+    private var dailyProgressPercent: Double {
+        guard todayCap > 0 else { return 0 }
+        return min(100, monitor.dailyIncrease / todayCap * 100)
     }
 }
 
 private struct RefreshSettingsView: View {
     @ObservedObject var monitor: UsageMonitor
+    @EnvironmentObject private var localization: AppLocalization
     let onDone: () -> Void
 
     @State private var selectedSchedule: RefreshSchedule
     @State private var selectedDailyRefreshTime: Date
     @State private var selectedTokenUnitStyle: TokenUnitStyle
+    @State private var selectedLanguage: AppLanguage
 
     init(monitor: UsageMonitor, onDone: @escaping () -> Void) {
         self.monitor = monitor
@@ -517,6 +566,7 @@ private struct RefreshSettingsView: View {
         _selectedSchedule = State(initialValue: monitor.refreshSchedule)
         _selectedDailyRefreshTime = State(initialValue: monitor.dailyRefreshTime)
         _selectedTokenUnitStyle = State(initialValue: monitor.tokenUnitStyle)
+        _selectedLanguage = State(initialValue: AppLocalization.shared.selection)
     }
 
     var body: some View {
@@ -534,10 +584,13 @@ private struct RefreshSettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("自动刷新设置")
+                        Text(L("偏好设置", "Preferences"))
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white)
-                        Text("默认每 15 分钟，也可改为每天固定时间")
+                        Text(L(
+                            "语言、自动刷新与数据读取设置",
+                            "Language, refresh, and data access"
+                        ))
                             .font(.system(size: 10))
                             .foregroundStyle(.white.opacity(0.48))
                     }
@@ -545,7 +598,7 @@ private struct RefreshSettingsView: View {
                     Button {
                         saveAndClose()
                     } label: {
-                        Text("完成")
+                        Text(L("完成", "Done"))
                             .font(.system(size: 11.5, weight: .semibold))
                             .padding(.horizontal, 4)
                     }
@@ -555,11 +608,11 @@ private struct RefreshSettingsView: View {
                 }
 
                 Picker(
-                    "刷新频率",
+                    L("刷新频率", "Refresh frequency"),
                     selection: $selectedSchedule
                 ) {
                     ForEach(RefreshSchedule.allCases) { schedule in
-                        Text(schedule.title).tag(schedule)
+                        Text(localization.refreshScheduleTitle(schedule)).tag(schedule)
                     }
                 }
                 .pickerStyle(.radioGroup)
@@ -567,7 +620,10 @@ private struct RefreshSettingsView: View {
 
                 if selectedSchedule == .daily {
                     HStack {
-                        Label("每天刷新时间", systemImage: "calendar.badge.clock")
+                        Label(
+                            L("每天刷新时间", "Daily refresh time"),
+                            systemImage: "calendar.badge.clock"
+                        )
                             .font(.system(size: 11.5, weight: .medium))
                             .foregroundStyle(.white.opacity(0.8))
                         Spacer()
@@ -588,16 +644,33 @@ private struct RefreshSettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Token 数量单位")
+                    Text(L("界面语言", "Language"))
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.8))
+
+                    Picker(L("界面语言", "Language"), selection: $selectedLanguage) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(localization.languageTitle(language)).tag(language)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .onChange(of: selectedLanguage) { language in
+                        localization.setLanguage(language)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L("Token 数量单位", "Token units"))
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(.white.opacity(0.8))
 
                     Picker(
-                        "Token 数量单位",
+                        L("Token 数量单位", "Token units"),
                         selection: $selectedTokenUnitStyle
                     ) {
                         ForEach(TokenUnitStyle.allCases) { style in
-                            Text(style.title).tag(style)
+                            Text(localization.tokenUnitTitle(style)).tag(style)
                         }
                     }
                     .labelsHidden()
@@ -605,7 +678,7 @@ private struct RefreshSettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Codex 数据来源")
+                    Text(L("Codex 数据来源", "Codex data source"))
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(.white.opacity(0.8))
 
@@ -617,13 +690,13 @@ private struct RefreshSettingsView: View {
                             .foregroundStyle(.white.opacity(0.72))
                             .lineLimit(1)
                         Spacer()
-                        Button("选择…") {
+                        Button(L("选择…", "Select")) {
                             monitor.chooseCodexLocation()
                         }
                         .buttonStyle(.bordered)
 
                         if monitor.codexSelectionName != nil {
-                            Button("恢复自动") {
+                            Button(L("恢复自动", "Auto")) {
                                 monitor.clearCodexLocation()
                             }
                             .buttonStyle(.plain)
@@ -635,7 +708,7 @@ private struct RefreshSettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Codex 登录资料")
+                    Text(L("Codex 登录资料", "Codex sign-in data"))
                         .font(.system(size: 11.5, weight: .medium))
                         .foregroundStyle(.white.opacity(0.8))
 
@@ -647,18 +720,21 @@ private struct RefreshSettingsView: View {
                                 .font(.system(size: 10.5))
                                 .foregroundStyle(.white.opacity(0.72))
                                 .lineLimit(1)
-                            Text("只授权给本机 Codex 读取，本应用不解析账号内容")
+                            Text(L(
+                                "只授权给本机 Codex 读取，本应用不解析账号内容",
+                                "Used only by local Codex; never parsed by this app"
+                            ))
                                 .font(.system(size: 9))
                                 .foregroundStyle(.white.opacity(0.42))
                         }
                         Spacer()
-                        Button("授权…") {
+                        Button(L("授权…", "Allow")) {
                             monitor.chooseCodexHomeLocation()
                         }
                         .buttonStyle(.bordered)
 
                         if monitor.codexHomeSelectionName != nil {
-                            Button("移除") {
+                            Button(L("移除", "Remove")) {
                                 monitor.clearCodexHomeLocation()
                             }
                             .buttonStyle(.plain)
@@ -675,7 +751,10 @@ private struct RefreshSettingsView: View {
                     monitor.openNotificationSettings()
                 } label: {
                     HStack {
-                        Label("打开 macOS 通知设置", systemImage: "bell.badge.fill")
+                        Label(
+                            L("打开 macOS 通知设置", "Open macOS notification settings"),
+                            systemImage: "bell.badge.fill"
+                        )
                         Spacer()
                         Image(systemName: "arrow.up.right")
                     }
@@ -696,12 +775,16 @@ private struct RefreshSettingsView: View {
             dailyRefreshTime: selectedDailyRefreshTime,
             tokenUnitStyle: selectedTokenUnitStyle
         )
+        localization.setLanguage(selectedLanguage)
         onDone()
     }
 }
 
 private struct UsageGauge: View {
-    let usedPercent: Double
+    let progressPercent: Double
+    let primaryPercent: Double
+    let label: String
+    let secondaryText: String
     let color: Color
     let isRefreshing: Bool
 
@@ -711,7 +794,7 @@ private struct UsageGauge: View {
                 .stroke(Color.white.opacity(0.07), lineWidth: 13)
 
             Circle()
-                .trim(from: 0, to: max(0.012, min(usedPercent / 100, 1)))
+                .trim(from: 0, to: max(0.012, min(progressPercent / 100, 1)))
                 .stroke(
                     AngularGradient(
                         colors: [.cyan, Color(red: 0.14, green: 0.68, blue: 1.0), color],
@@ -723,20 +806,27 @@ private struct UsageGauge: View {
                 )
                 .rotationEffect(.degrees(-90))
                 .shadow(color: color.opacity(0.42), radius: 7)
-                .animation(.easeOut(duration: 0.5), value: usedPercent)
+                .animation(.easeOut(duration: 0.5), value: progressPercent)
 
-            VStack(spacing: 0) {
+            VStack(spacing: 1) {
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text(UsageMonitor.percent(usedPercent))
+                    Text(UsageMonitor.percent(primaryPercent))
                         .font(.system(size: 31, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                     Text("%")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.62))
                 }
-                Text("本周期已用")
-                    .font(.system(size: 10.5, weight: .medium))
+                Text(label)
+                    .font(.system(size: 9.5, weight: .medium))
                     .foregroundStyle(.white.opacity(0.48))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Text(secondaryText)
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(color.opacity(0.8))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
             }
 
             if isRefreshing {
@@ -771,6 +861,8 @@ private struct MetricRow: View {
                 Text(label)
                     .font(.system(size: 9.5))
                     .foregroundStyle(.white.opacity(0.44))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
             }
         }
     }
@@ -780,6 +872,7 @@ private struct DailyBudgetCard: View {
     let dailyIncrease: Double
     let statusColor: Color
     let budget: DailyBudgetRollover?
+    @EnvironmentObject private var localization: AppLocalization
 
     private var cap: Double {
         max(1, budget?.todayAvailablePercent ?? 20)
@@ -789,12 +882,17 @@ private struct DailyBudgetCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("今日额度预算")
+                    Text(L("今日额度预算", "Today's budget"))
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("按本机快照差值累计，基础上限 20 个百分点")
+                    Text(L(
+                        "按本机快照差值累计，基础上限 20 个百分点",
+                        "Local snapshot difference · 20-point base cap"
+                    ))
                         .font(.system(size: 9.5))
                         .foregroundStyle(.white.opacity(0.42))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
                 }
                 Spacer()
                 Text(
@@ -841,10 +939,10 @@ private struct DailyBudgetCard: View {
             .frame(height: 8)
 
             HStack(spacing: 0) {
-                RuleLabel(value: "5", label: "注意")
-                RuleLabel(value: "10", label: "提醒")
-                RuleLabel(value: "15", label: "偏高")
-                RuleLabel(value: "20", label: "基础上限")
+                RuleLabel(value: "5", label: L("注意", "Notice"))
+                RuleLabel(value: "10", label: L("提醒", "Alert"))
+                RuleLabel(value: "15", label: L("偏高", "High"))
+                RuleLabel(value: "20", label: L("基础上限", "Base cap"))
             }
 
             Divider().overlay(Color.white.opacity(0.07))
@@ -852,25 +950,25 @@ private struct DailyBudgetCard: View {
             HStack(spacing: 0) {
                 BudgetInputValue(
                     value: formatted(budget?.sustainableDailyBudgetPercent),
-                    label: "周日均"
+                    label: L("周日均", "Sustainable")
                 )
                 BudgetInputValue(
                     value: yesterdayUsedValue,
                     label: budget?.yesterdayUsageSource == .windowBaselineEstimate
-                        ? "昨日估算"
-                        : "昨日已用"
+                        ? L("昨日估算", "Yesterday est.")
+                        : L("昨日已用", "Yesterday")
                 )
                 BudgetInputValue(
                     value: "+\(formatted(budget?.carriedPercent))",
-                    label: "昨日余量"
+                    label: L("昨日余量", "Carryover")
                 )
                 BudgetInputValue(
                     value: formatted(budget?.baseDailyCapPercent ?? 20),
-                    label: "基础上限"
+                    label: L("基础上限", "Base cap")
                 )
                 BudgetInputValue(
                     value: formatted(budget?.todayAvailablePercent ?? 20),
-                    label: "今日上限"
+                    label: L("今日上限", "Today cap")
                 )
             }
 
@@ -883,9 +981,10 @@ private struct DailyBudgetCard: View {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "desktopcomputer.trianglebadge.exclamationmark")
                         .foregroundStyle(.orange.opacity(0.9))
-                    Text(
-                        "此设备从首次刷新开始记录，无法回溯其他电脑或首次刷新前的今日增量；周期已用与剩余仍来自账号实时数据。"
-                    )
+                    Text(L(
+                        "此设备从首次刷新开始记录，无法回溯其他电脑或首次刷新前的今日增量；周期已用与剩余仍来自账号实时数据。",
+                        "This device records from its first refresh. Earlier or other-device activity is not included in today's local increase; window usage remains live account data."
+                    ))
                     .fixedSize(horizontal: false, vertical: true)
                 }
                 .font(.system(size: 8.2))
@@ -910,30 +1009,54 @@ private struct DailyBudgetCard: View {
 
     private var sourceDescription: String {
         guard let budget else {
-            return "周日均：等待 App Server · 昨日：暂无本机快照 · 20%：个人规则"
+            return L(
+                "周日均：等待 App Server · 昨日：暂无本机快照 · 20%：个人规则",
+                "Sustainable: waiting for App Server · Yesterday: no local snapshot · 20%: personal rule"
+            )
         }
         if budget.hasYesterdayData {
-            let sourceDay = budget.sourceDay ?? "昨日"
+            let sourceDay = budget.sourceDay ?? L("昨日", "Yesterday")
             if budget.yesterdayUsageSource == .windowBaselineEstimate {
-                return "周日均：App Server · \(sourceDay)：窗口基线估算 · 20%：个人规则"
+                return L(
+                    "周日均：App Server · \(sourceDay)：窗口基线估算 · 20%：个人规则",
+                    "Sustainable: App Server · \(sourceDay): window baseline estimate · 20%: personal rule"
+                )
             }
-            return "周日均：App Server · \(sourceDay)：本机日快照 · 20%：个人规则"
+            return L(
+                "周日均：App Server · \(sourceDay)：本机日快照 · 20%：个人规则",
+                "Sustainable: App Server · \(sourceDay): local daily snapshot · 20%: personal rule"
+            )
         }
-        return "周日均：App Server · 昨日：暂无本机快照 · 20%：个人规则"
+        return L(
+            "周日均：App Server · 昨日：暂无本机快照 · 20%：个人规则",
+            "Sustainable: App Server · Yesterday: no local snapshot · 20%: personal rule"
+        )
     }
 
     private var formulaDescription: String {
         guard let budget, budget.hasYesterdayData else {
-            return "今日上限 20%；此设备取得完整昨日快照后，再加上昨日日均未用部分。"
+            return L(
+                "今日上限 20%；此设备取得完整昨日快照后，再加上昨日日均未用部分。",
+                "Today's cap is 20%. Unused sustainable budget rolls over after a full local snapshot day."
+            )
         }
-        return "今日上限 = \(formatted(budget.baseDailyCapPercent)) + \(formatted(budget.carriedPercent)) = \(formatted(budget.todayAvailablePercent))"
+        return L(
+            "今日上限 = \(formatted(budget.baseDailyCapPercent)) + \(formatted(budget.carriedPercent)) = \(formatted(budget.todayAvailablePercent))",
+            "Today's cap = \(formatted(budget.baseDailyCapPercent)) + \(formatted(budget.carriedPercent)) = \(formatted(budget.todayAvailablePercent))"
+        )
     }
 
     private var sourceHelp: String {
         if budget?.yesterdayUsageSource == .windowBaselineEstimate {
-            return "周日均来自 account/rateLimits/read（100 ÷ 窗口天数）。当前额度窗口从昨日开始，因此用今天首次快照的周累计基线估算昨日已用；该估算可能包含今天首次快照前的用量。20% 是你的个人规则。"
+            return L(
+                "周日均来自 account/rateLimits/read（100 ÷ 窗口天数）。当前额度窗口从昨日开始，因此用今天首次快照的周累计基线估算昨日已用；该估算可能包含今天首次快照前的用量。20% 是你的个人规则。",
+                "Sustainable pace comes from account/rateLimits/read (100 ÷ window days). Because this window began yesterday, yesterday is estimated from today's first window baseline and may include early-today usage. The 20% cap is your personal rule."
+            )
         }
-        return "周日均来自 account/rateLimits/read（100 ÷ 窗口天数）；昨日已用来自本机同日额度快照差值；20% 是你的个人每日基础上限，不是 OpenAI 官方硬限制。缺少昨日快照时不按 0 计算，也不结转。"
+        return L(
+            "周日均来自 account/rateLimits/read（100 ÷ 窗口天数）；昨日已用来自本机同日额度快照差值；20% 是你的个人每日基础上限，不是 OpenAI 官方硬限制。缺少昨日快照时不按 0 计算，也不结转。",
+            "Sustainable pace comes from account/rateLimits/read (100 ÷ window days). Yesterday comes from local snapshot differences. The 20% base cap is your personal rule, not an official OpenAI hard limit. Missing days are neither treated as zero nor rolled over."
+        )
     }
 
     private var yesterdayUsedValue: String {
@@ -988,6 +1111,7 @@ private struct BudgetInputValue: View {
 private struct TokenUsageCard: View {
     let usage: AccountTokenUsage
     let unitStyle: TokenUnitStyle
+    @EnvironmentObject private var localization: AppLocalization
 
     private var recentBuckets: [DailyTokenUsage] {
         Array(usage.dailyUsageBuckets.suffix(7))
@@ -1020,7 +1144,7 @@ private struct TokenUsageCard: View {
                 HStack(spacing: 6) {
                     Image(systemName: "number.circle.fill")
                         .foregroundStyle(.cyan)
-                    Text("账号 Token 使用量")
+                    Text(L("账号 Token 使用量", "Account token usage"))
                         .font(.system(size: 12.5, weight: .semibold))
                         .foregroundStyle(.white)
                 }
@@ -1028,7 +1152,10 @@ private struct TokenUsageCard: View {
                 Spacer()
 
                 Text(
-                    "总累计 \(TokenCountFormatter.compact(usage.summary.lifetimeTokens, style: unitStyle))"
+                    L(
+                        "总累计 \(TokenCountFormatter.compact(usage.summary.lifetimeTokens, style: unitStyle))",
+                        "Lifetime \(TokenCountFormatter.compact(usage.summary.lifetimeTokens, style: unitStyle))"
+                    )
                 )
                     .font(.system(size: 8.5, weight: .medium))
                     .foregroundStyle(.cyan.opacity(0.85))
@@ -1052,12 +1179,14 @@ private struct TokenUsageCard: View {
                         usage.peakDailyTokensThisMonth(),
                         style: unitStyle
                     ),
-                    label: "本月单日峰值",
+                    label: L("本月单日峰值", "Peak day this month"),
                     exactValue: usage.peakDailyTokensThisMonth()
                 )
                 Divider().overlay(Color.white.opacity(0.08))
                 TokenMetric(
-                    value: usage.summary.currentStreakDays.map { "\($0) 天" } ?? "--",
+                    value: usage.summary.currentStreakDays.map {
+                        L("\($0) 天", "\($0) days")
+                    } ?? "--",
                     label: streakLabel,
                     exactValue: nil
                 )
@@ -1068,9 +1197,10 @@ private struct TokenUsageCard: View {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "clock.badge.exclamationmark.fill")
                         .foregroundStyle(.orange.opacity(0.9))
-                    Text(
-                        "服务端日桶截至 \(shortDate(latestUsageDate))；本地北京时间为 \(shortDate(todayKey))。官方未声明 startDate 时区，暂不换算，也不把本地今天补为 0。"
-                    )
+                    Text(L(
+                        "服务端日桶截至 \(shortDate(latestUsageDate))；本地北京时间为 \(shortDate(todayKey))。官方未声明 startDate 时区，暂不换算，也不把本地今天补为 0。",
+                        "Server daily buckets end at \(shortDate(latestUsageDate)); the local date is \(shortDate(todayKey)). The startDate timezone is undocumented, so dates are not converted and today is not filled with zero."
+                    ))
                     .fixedSize(horizontal: false, vertical: true)
                 }
                 .font(.system(size: 8.2))
@@ -1079,14 +1209,17 @@ private struct TokenUsageCard: View {
                 .padding(.vertical, 6)
                 .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
                 .help(
-                    "数据源：Codex App Server account/usage/read。dailyUsageBuckets.startDate 原值为 \(latestUsageDate)，本机北京时间日期为 \(todayKey)。OpenAI 文档仅将其定义为每日分桶日期，未指定时区。"
+                    L(
+                        "数据源：Codex App Server account/usage/read。dailyUsageBuckets.startDate 原值为 \(latestUsageDate)，本机北京时间日期为 \(todayKey)。OpenAI 文档仅将其定义为每日分桶日期，未指定时区。",
+                        "Source: Codex App Server account/usage/read. dailyUsageBuckets.startDate is \(latestUsageDate); the local date is \(todayKey). OpenAI defines it as a daily bucket date without documenting its timezone."
+                    )
                 )
             }
 
             if recentBuckets.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "chart.bar.xaxis")
-                    Text("暂时没有每日 Token 趋势数据")
+                    Text(L("暂时没有每日 Token 趋势数据", "No daily token trend data yet"))
                 }
                 .font(.system(size: 9.5))
                 .foregroundStyle(.white.opacity(0.42))
@@ -1118,7 +1251,7 @@ private struct TokenUsageCard: View {
                                     .foregroundStyle(.white.opacity(0.35))
                             }
                             .frame(maxWidth: .infinity)
-                            .help("\(bucket.startDate)：\(bucket.tokens.formatted()) Token")
+                            .help("\(bucket.startDate): \(bucket.tokens.formatted()) tokens")
                         }
                     }
                 }
@@ -1131,19 +1264,27 @@ private struct TokenUsageCard: View {
     }
 
     private var streakLabel: String {
-        guard let longest = usage.summary.longestStreakDays else { return "连续使用" }
-        return "连续 · 最长 \(longest) 天"
+        guard let longest = usage.summary.longestStreakDays else {
+            return L("连续使用", "Current streak")
+        }
+        return L("连续 · 最长 \(longest) 天", "Streak · best \(longest) days")
     }
 
     private var monthToDateLabel: String {
-        guard let latestUsageDate else { return "本月暂无日汇总" }
-        if latestUsageDate == todayKey { return "本月截至今日" }
-        return "本月·服务端至 \(shortDate(latestUsageDate))"
+        guard let latestUsageDate else { return L("本月暂无日汇总", "No monthly summary") }
+        if latestUsageDate == todayKey { return L("本月截至今日", "Month to date") }
+        return L(
+            "本月·服务端至 \(shortDate(latestUsageDate))",
+            "Month · server through \(shortDate(latestUsageDate))"
+        )
     }
 
     private func shortDate(_ value: String) -> String {
         let components = value.split(separator: "-")
         guard components.count == 3 else { return value }
+        if localization.isChinese {
+            return "\(components[1])/\(components[2])"
+        }
         return "\(components[1])/\(components[2])"
     }
 }
@@ -1152,6 +1293,7 @@ private struct TokenMetric: View {
     let value: String
     let label: String
     let exactValue: Int64?
+    @EnvironmentObject private var localization: AppLocalization
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -1167,13 +1309,16 @@ private struct TokenMetric: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 7)
-        .help(exactValue.map { "精确值：\($0.formatted()) Token" } ?? label)
+        .help(exactValue.map {
+            L("精确值：\($0.formatted()) Token", "Exact: \($0.formatted()) tokens")
+        } ?? label)
     }
 }
 
 private struct TokenUsageUnavailableCard: View {
     let isRefreshing: Bool
     let errorMessage: String?
+    @EnvironmentObject private var localization: AppLocalization
 
     var body: some View {
         HStack(spacing: 9) {
@@ -1184,10 +1329,12 @@ private struct TokenUsageUnavailableCard: View {
                     .foregroundStyle(.cyan)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text("账号 Token 使用量")
+                Text(L("账号 Token 使用量", "Account token usage"))
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(.white)
-                Text(isRefreshing ? "正在读取 Token 数据…" : "Token 数据暂不可用")
+                Text(isRefreshing
+                     ? L("正在读取 Token 数据…", "Reading token data…")
+                     : L("Token 数据暂不可用", "Token data unavailable"))
                     .font(.system(size: 9.5))
                     .foregroundStyle(.white.opacity(0.42))
             }
@@ -1196,7 +1343,7 @@ private struct TokenUsageUnavailableCard: View {
         .padding(13)
         .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 13))
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.white.opacity(0.06), lineWidth: 1))
-        .help(errorMessage ?? "等待 Codex 返回 Token 数据")
+        .help(errorMessage ?? L("等待 Codex 返回 Token 数据", "Waiting for Codex token data"))
     }
 }
 
@@ -1236,6 +1383,7 @@ private struct ErrorBanner: View {
     let canOpenCodex: Bool
     let isLaunchingCodex: Bool
     let onOpenCodex: () -> Void
+    @EnvironmentObject private var localization: AppLocalization
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -1247,7 +1395,10 @@ private struct ErrorBanner: View {
                         .font(.system(size: 10.5))
                         .fixedSize(horizontal: false, vertical: true)
                         .foregroundStyle(.white.opacity(0.86))
-                    Text("首次使用另一台电脑时，请先启动 Codex/ChatGPT 并确认账号已登录。")
+                    Text(L(
+                        "首次使用另一台电脑时，请先启动 Codex/ChatGPT 并确认账号已登录。",
+                        "On a new Mac, open Codex/ChatGPT first and confirm that you are signed in."
+                    ))
                         .font(.system(size: 9))
                         .foregroundStyle(.white.opacity(0.5))
                 }
@@ -1262,7 +1413,9 @@ private struct ErrorBanner: View {
                         } else {
                             Image(systemName: "arrow.up.forward.app.fill")
                         }
-                        Text(isLaunchingCodex ? "正在启动 Codex" : "打开 Codex/ChatGPT")
+                        Text(isLaunchingCodex
+                             ? L("正在启动 Codex", "Opening Codex")
+                             : L("打开 Codex/ChatGPT", "Open Codex/ChatGPT"))
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -1279,6 +1432,7 @@ private struct ErrorBanner: View {
 
 private struct CodexAccessCard: View {
     @ObservedObject var monitor: UsageMonitor
+    @EnvironmentObject private var localization: AppLocalization
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -1288,23 +1442,34 @@ private struct CodexAccessCard: View {
                     .foregroundStyle(.cyan)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("完成本机 Codex 授权")
+                    Text(L("完成本机 Codex 授权", "Authorize local Codex access"))
                         .font(.system(size: 10.5, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("App Store 沙盒需要分别读取程序和登录资料。")
+                    Text(L(
+                        "App Store 沙盒需要分别读取程序和登录资料。",
+                        "The App Store sandbox needs separate access to the app and sign-in data."
+                    ))
                         .font(.system(size: 9.5))
                         .foregroundStyle(.white.opacity(0.55))
                 }
             }
 
             HStack(spacing: 8) {
-                Button(monitor.codexSelectionName == nil ? "1. 选择 Codex 程序" : "✓ Codex 程序") {
+                Button(
+                    monitor.codexSelectionName == nil
+                        ? L("1. 选择 Codex 程序", "1. Choose Codex app")
+                        : L("✓ Codex 程序", "✓ Codex app")
+                ) {
                     monitor.chooseCodexLocation()
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(monitor.codexSelectionName == nil ? .cyan.opacity(0.75) : .green.opacity(0.65))
 
-                Button(monitor.codexHomeSelectionName == nil ? "2. 授权登录资料" : "✓ 登录资料") {
+                Button(
+                    monitor.codexHomeSelectionName == nil
+                        ? L("2. 授权登录资料", "2. Authorize sign-in data")
+                        : L("✓ 登录资料", "✓ Sign-in data")
+                ) {
                     monitor.chooseCodexHomeLocation()
                 }
                 .buttonStyle(.borderedProminent)

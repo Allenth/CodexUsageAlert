@@ -117,6 +117,7 @@ Mac App Store 应用必须启用 App Sandbox。当前应用直接执行另一个
 
 - [ ] 完善首次启动引导、权限说明和 Codex 选择流程。
 - [ ] 增加隐私政策、支持页面和应用内“关于”。
+- [ ] 在 `typewhale.com` 建立应用介绍、支持和隐私政策页面。
 - [ ] 检查应用名称、图标、免责声明和商标风险。
 - [ ] 确认登录时启动只在用户主动开启后注册。
 - [ ] 移除独立更新机制；商店版本只通过 Mac App Store 更新。
@@ -182,9 +183,13 @@ Mac App Store 应用必须启用 App Sandbox。当前应用直接执行另一个
 - Apple Developer Program 有效会员资格。
 - App Store Connect 的 Account Holder、Admin 或 App Manager 权限。
 - 注册完成的 Bundle ID 和 Mac App Distribution 签名能力。
-- 中英文应用名称、描述、关键词、支持网址和隐私政策网址。
+- 应用采用免费下载，不包含订阅和 App 内购买。
+- 官网和营销网址使用 <https://typewhale.com/>。
+- 中英文应用名称、描述、关键词，以及 `typewhale.com` 下的支持网址和隐私政策网址。
 - 商店截图、应用图标、版权信息和审核说明。
 - 可供审核人员复现功能的 Codex 环境说明。
+
+上架字段的当前决定和待办事项统一记录在 [Mac App Store 上架资料](app-store-metadata.md)。
 
 不得把 Apple ID 密码、App Store Connect API 私钥、签名证书私钥或 Codex 登录凭据提交到 Git 仓库。
 

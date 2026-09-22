@@ -74,6 +74,7 @@ docs/                       开发计划、提示词和项目文档
 项目文档统一保存在 [`docs`](docs/README.md) 目录，包括：
 
 - [Mac App Store 开发计划](docs/app-store-development-plan.md)
+- [Mac App Store 上架资料](docs/app-store-metadata.md)
 - [从零生成 Codex 用量预警的完整开发提示词](docs/development-prompt.md)
 
 ## 分发说明

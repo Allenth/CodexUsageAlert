@@ -1,5 +1,5 @@
 Codex Usage Alert / Codex 用量预警
-版本 0.2.4（build 24）
+版本 0.2.5（build 25）
 
 一、安装
 
@@ -31,6 +31,7 @@ Codex Usage Alert / Codex 用量预警
 9. 每个主要数据区域右上角都有 info 按钮，点击后可查看该区域的数据来源、计算方式和统计口径。
 
 Token 每日统计会自动适配本机日期：服务端最新一条显示为今天、上一条显示为昨天，图表和本月累计使用相同的日期口径。
+鼠标停在或点击 Token 柱形时，精确数值浮窗显示在图表上方，并通过引导线指向当前柱形；再次点击可收起。
 
 沙盒版首次授权登录资料时，会自动在文件选择器中显示隐藏的“.codex”文件夹。选中“.codex”后点击“授权读取”即可，不需要使用快捷键或手动输入路径。
 
@@ -80,6 +81,7 @@ English Quick Start
 9. Use the info button in each data area to view its data source, calculation, and reporting rules.
 
 Daily token totals are aligned to this Mac: the latest server entry is shown as today, the previous entry as yesterday, and the chart and month-to-date total use the same date alignment.
+Hovering or clicking a token bar shows its exact value above the chart, with a leader line pointing to the active bar. Click again to hide it.
 
 On first use in the sandbox build, the file picker automatically reveals the hidden .codex folder. Select .codex and click Allow Access; you do not need to type the path manually.
 

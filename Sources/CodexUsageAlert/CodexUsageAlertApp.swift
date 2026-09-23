@@ -1261,6 +1261,19 @@ private struct ReleaseNote: Identifiable {
 private enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            build: 25,
+            chineseItems: [
+                "将 Token 柱状图悬停浮窗移到图表上方，避免遮挡柱形。",
+                "增加指向当前柱形的引导线和高亮端点。",
+                "支持点击柱形显示或收起详情，并补充辅助功能标签。",
+            ],
+            englishItems: [
+                "Move the token chart hover card above the plot so it never covers a bar.",
+                "Add a leader line and highlighted endpoint pointing to the active bar.",
+                "Allow clicking a bar to show or hide details, with accessibility labels for every bar.",
+            ]
+        ),
+        ReleaseNote(
             build: 24,
             chineseItems: [
                 "为额度概览、今日预算、Token、重置时间、额度周期和预警刻度增加独立 info 浮窗。",
@@ -1924,6 +1937,12 @@ private struct TokenUsageCard: View {
                 .frame(maxWidth: .infinity, minHeight: 48)
             } else {
                 GeometryReader { geometry in
+                    let tooltipWidth: CGFloat = 126
+                    let tooltipHeight: CGFloat = 45
+                    let chartTop: CGFloat = 52
+                    let chartHeight: CGFloat = 55
+                    let barAreaHeight = chartHeight - 17
+
                     ZStack(alignment: .topLeading) {
                         HStack(alignment: .bottom, spacing: 7) {
                             ForEach(recentBuckets) { bucket in
@@ -1940,7 +1959,7 @@ private struct TokenUsageCard: View {
                                         .frame(
                                             height: max(
                                                 4,
-                                                (geometry.size.height - 17)
+                                                barAreaHeight
                                                     * CGFloat(Double(bucket.tokens) / maximumTokens)
                                             )
                                         )
@@ -1952,6 +1971,24 @@ private struct TokenUsageCard: View {
                                 .frame(maxWidth: .infinity)
                                 .contentShape(Rectangle())
                                 .opacity(hoveredBucketID == nil || hoveredBucketID == bucket.id ? 1 : 0.48)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel(
+                                    L(
+                                        "\(shortDate(adaptedDateKey(for: bucket))) Token 用量",
+                                        "Token usage on \(shortDate(adaptedDateKey(for: bucket)))"
+                                    )
+                                )
+                                .accessibilityValue(
+                                    "\(TokenCountFormatter.compact(bucket.tokens, style: unitStyle))"
+                                )
+                                .accessibilityAddTraits(.isButton)
+                                .onTapGesture {
+                                    withAnimation(.easeOut(duration: 0.12)) {
+                                        hoveredBucketID = hoveredBucketID == bucket.id
+                                            ? nil
+                                            : bucket.id
+                                    }
+                                }
                                 .onHover { isHovering in
                                     withAnimation(.easeOut(duration: 0.12)) {
                                         hoveredBucketID = isHovering ? bucket.id : nil
@@ -1959,9 +1996,55 @@ private struct TokenUsageCard: View {
                                 }
                             }
                         }
+                        .frame(width: geometry.size.width, height: chartHeight)
+                        .offset(y: chartTop)
 
                         if let hoveredBucket,
                            let index = recentBuckets.firstIndex(where: { $0.id == hoveredBucket.id }) {
+                            let tooltipX = tooltipOffset(
+                                index: index,
+                                chartWidth: geometry.size.width
+                            )
+                            let barCenterX = barCenter(
+                                index: index,
+                                chartWidth: geometry.size.width
+                            )
+                            let hoveredBarHeight = max(
+                                4,
+                                barAreaHeight
+                                    * CGFloat(Double(hoveredBucket.tokens) / maximumTokens)
+                            )
+                            let barTopY = chartTop + barAreaHeight - hoveredBarHeight
+
+                            Path { path in
+                                path.move(
+                                    to: CGPoint(
+                                        x: tooltipX + tooltipWidth / 2,
+                                        y: tooltipHeight
+                                    )
+                                )
+                                path.addLine(
+                                    to: CGPoint(
+                                        x: barCenterX,
+                                        y: max(tooltipHeight + 3, barTopY - 3)
+                                    )
+                                )
+                            }
+                            .stroke(
+                                Color.cyan.opacity(0.58),
+                                style: StrokeStyle(lineWidth: 1.1, lineCap: .round)
+                            )
+                            .allowsHitTesting(false)
+                            .zIndex(1)
+
+                            Circle()
+                                .fill(Color.cyan)
+                                .frame(width: 4, height: 4)
+                                .offset(x: barCenterX - 2, y: max(tooltipHeight + 1, barTopY - 5))
+                                .shadow(color: .cyan.opacity(0.55), radius: 2)
+                                .allowsHitTesting(false)
+                                .zIndex(1)
+
                             TokenBarTooltip(
                                 bucket: hoveredBucket,
                                 displayDate: adaptedDateKey(for: hoveredBucket),
@@ -1969,7 +2052,7 @@ private struct TokenUsageCard: View {
                             )
                                 .frame(width: 126)
                                 .offset(
-                                    x: tooltipOffset(index: index, chartWidth: geometry.size.width),
+                                    x: tooltipX,
                                     y: 0
                                 )
                                 .allowsHitTesting(false)
@@ -1978,7 +2061,7 @@ private struct TokenUsageCard: View {
                         }
                     }
                 }
-                .frame(height: 55)
+                .frame(height: 107)
             }
         }
         .padding(13)
@@ -2027,8 +2110,8 @@ private struct TokenUsageCard: View {
                 icon: "chart.bar.fill",
                 title: L("每日趋势", "Daily trend"),
                 text: L(
-                    "柱状图显示最近七条每日统计。将鼠标停在柱形上可查看适配后的日期和精确 Token 数。",
-                    "The chart shows the latest seven daily totals. Hover over a bar to see its aligned date and exact token count."
+                    "柱状图显示最近七条每日统计。将鼠标停在柱形上，图表上方会显示适配后的日期和精确 Token 数，并用引导线指向当前柱形。",
+                    "The chart shows the latest seven daily totals. Hover over a bar to see its aligned date and exact token count above the chart, with a leader line pointing to the active bar."
                 )
             ),
             InfoPopoverSection(
@@ -2048,9 +2131,16 @@ private struct TokenUsageCard: View {
 
     private func tooltipOffset(index: Int, chartWidth: CGFloat) -> CGFloat {
         let tooltipWidth: CGFloat = 126
-        let count = max(recentBuckets.count, 1)
-        let center = (CGFloat(index) + 0.5) * chartWidth / CGFloat(count)
+        let center = barCenter(index: index, chartWidth: chartWidth)
         return min(max(0, center - tooltipWidth / 2), max(0, chartWidth - tooltipWidth))
+    }
+
+    private func barCenter(index: Int, chartWidth: CGFloat) -> CGFloat {
+        let count = max(recentBuckets.count, 1)
+        let spacing: CGFloat = 7
+        let totalSpacing = spacing * CGFloat(max(0, count - 1))
+        let columnWidth = max(0, chartWidth - totalSpacing) / CGFloat(count)
+        return CGFloat(index) * (columnWidth + spacing) + columnWidth / 2
     }
 
     private func shortDate(_ value: String) -> String {

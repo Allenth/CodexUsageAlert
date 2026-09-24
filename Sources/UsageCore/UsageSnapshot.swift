@@ -162,26 +162,11 @@ public struct AccountTokenUsage: Codable, Equatable, Sendable {
         through date: Date,
         calendar: Calendar
     ) -> Date? {
-        guard let latestDateKey = latestDailyBucket?.startDate,
-              let latestServerDate = parsedDate(from: latestDateKey, calendar: calendar),
-              let bucketServerDate = parsedDate(from: bucket.startDate, calendar: calendar) else {
-            return nil
-        }
+        let buckets = orderedDailyUsageBuckets
+        guard let index = buckets.firstIndex(where: { $0.id == bucket.id }) else { return nil }
         let localToday = calendar.startOfDay(for: date)
-        let dayShift = calendar.dateComponents(
-            [.day],
-            from: latestServerDate,
-            to: localToday
-        ).day ?? 0
-        return calendar.date(byAdding: .day, value: dayShift, to: bucketServerDate)
-    }
-
-    private func parsedDate(from key: String, calendar: Calendar) -> Date? {
-        let parts = key.split(separator: "-").compactMap { Int($0) }
-        guard parts.count == 3 else { return nil }
-        return calendar.date(
-            from: DateComponents(year: parts[0], month: parts[1], day: parts[2])
-        )
+        let dayOffset = index - (buckets.count - 1)
+        return calendar.date(byAdding: .day, value: dayOffset, to: localToday)
     }
 }
 

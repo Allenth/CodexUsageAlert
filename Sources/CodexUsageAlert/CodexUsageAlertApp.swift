@@ -1261,6 +1261,19 @@ private struct ReleaseNote: Identifiable {
 private enum ReleaseNotes {
     static let all: [ReleaseNote] = [
         ReleaseNote(
+            build: 26,
+            chineseItems: [
+                "Token 图表固定显示截至今天的最近 7 个本机自然日。",
+                "前六列增加星期标签，最后一列明确标记为今天。",
+                "按数据顺序消除服务端日期空档，浮窗同步显示适配后的星期和日期。",
+            ],
+            englishItems: [
+                "Always show the latest seven local calendar days ending today in the token chart.",
+                "Add weekday labels to the first six columns and mark the final column as Today.",
+                "Remove raw server-date gaps by mapping entries in order, with aligned weekdays and dates in the detail card.",
+            ]
+        ),
+        ReleaseNote(
             build: 25,
             chineseItems: [
                 "将 Token 柱状图悬停浮窗移到图表上方，避免遮挡柱形。",
@@ -1940,8 +1953,8 @@ private struct TokenUsageCard: View {
                     let tooltipWidth: CGFloat = 126
                     let tooltipHeight: CGFloat = 45
                     let chartTop: CGFloat = 52
-                    let chartHeight: CGFloat = 55
-                    let barAreaHeight = chartHeight - 17
+                    let chartHeight: CGFloat = 64
+                    let barAreaHeight = chartHeight - 26
 
                     ZStack(alignment: .topLeading) {
                         HStack(alignment: .bottom, spacing: 7) {
@@ -1964,9 +1977,18 @@ private struct TokenUsageCard: View {
                                             )
                                         )
                                         .shadow(color: .cyan.opacity(0.22), radius: 3)
-                                    Text(shortDate(adaptedDateKey(for: bucket)))
-                                        .font(.system(size: 7.5, weight: .medium, design: .rounded))
-                                        .foregroundStyle(.white.opacity(0.35))
+                                    VStack(spacing: 0) {
+                                        Text(dayLabel(for: bucket))
+                                            .font(.system(size: 7.2, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(
+                                                isToday(bucket)
+                                                    ? Color.cyan.opacity(0.88)
+                                                    : Color.white.opacity(0.43)
+                                            )
+                                        Text(shortDate(adaptedDateKey(for: bucket)))
+                                            .font(.system(size: 7.1, weight: .medium, design: .rounded))
+                                            .foregroundStyle(.white.opacity(0.32))
+                                    }
                                 }
                                 .frame(maxWidth: .infinity)
                                 .contentShape(Rectangle())
@@ -1974,8 +1996,8 @@ private struct TokenUsageCard: View {
                                 .accessibilityElement(children: .ignore)
                                 .accessibilityLabel(
                                     L(
-                                        "\(shortDate(adaptedDateKey(for: bucket))) Token 用量",
-                                        "Token usage on \(shortDate(adaptedDateKey(for: bucket)))"
+                                        "\(dayLabel(for: bucket)) \(shortDate(adaptedDateKey(for: bucket))) Token 用量",
+                                        "Token usage on \(dayLabel(for: bucket)) \(shortDate(adaptedDateKey(for: bucket)))"
                                     )
                                 )
                                 .accessibilityValue(
@@ -2047,7 +2069,7 @@ private struct TokenUsageCard: View {
 
                             TokenBarTooltip(
                                 bucket: hoveredBucket,
-                                displayDate: adaptedDateKey(for: hoveredBucket),
+                                displayDate: tooltipDateLabel(for: hoveredBucket),
                                 unitStyle: unitStyle
                             )
                                 .frame(width: 126)
@@ -2061,7 +2083,7 @@ private struct TokenUsageCard: View {
                         }
                     }
                 }
-                .frame(height: 107)
+                .frame(height: 116)
             }
         }
         .padding(13)
@@ -2086,8 +2108,8 @@ private struct TokenUsageCard: View {
                 icon: "calendar.badge.clock",
                 title: L("今日与昨日", "Today and yesterday"),
                 text: L(
-                    "服务端最新一条每日统计固定显示为今天，上一条显示为昨天；图表日期按相同规则适配本机日期。服务端最新原始日期为 \(rawDate)，本机系统日期为 \(todayKey)。",
-                    "The latest server daily total is shown as today and the previous total as yesterday. Chart dates use the same local alignment. The latest raw server date is \(rawDate), while this Mac reports \(todayKey)."
+                    "服务端最新一条每日统计固定显示为今天，上一条显示为昨天；最新 7 条按顺序对应本机最近 7 个自然日。服务端最新原始日期为 \(rawDate)，本机系统日期为 \(todayKey)。",
+                    "The latest server daily total is shown as today and the previous total as yesterday. The latest seven entries map in order to the latest seven local calendar days. The latest raw server date is \(rawDate), while this Mac reports \(todayKey)."
                 )
             ),
             InfoPopoverSection(
@@ -2110,8 +2132,8 @@ private struct TokenUsageCard: View {
                 icon: "chart.bar.fill",
                 title: L("每日趋势", "Daily trend"),
                 text: L(
-                    "柱状图显示最近七条每日统计。将鼠标停在柱形上，图表上方会显示适配后的日期和精确 Token 数，并用引导线指向当前柱形。",
-                    "The chart shows the latest seven daily totals. Hover over a bar to see its aligned date and exact token count above the chart, with a leader line pointing to the active bar."
+                    "柱状图固定显示截至今天的最近 7 个本机自然日。前六列显示星期，最后一列标记为今天；浮窗会显示适配后的星期、日期和精确 Token 数。",
+                    "The chart always shows the latest seven local calendar days ending today. The first six columns show weekdays and the final column is marked Today; the detail card shows the aligned weekday, date, and exact token count."
                 )
             ),
             InfoPopoverSection(
@@ -2155,6 +2177,34 @@ private struct TokenUsageCard: View {
     private func adaptedDateKey(for bucket: DailyTokenUsage) -> String {
         usage.adaptedDateKey(for: bucket)
     }
+
+    private func isToday(_ bucket: DailyTokenUsage) -> Bool {
+        adaptedDateKey(for: bucket) == todayKey
+    }
+
+    private func dayLabel(for bucket: DailyTokenUsage) -> String {
+        if isToday(bucket) {
+            return L("今天", "Today")
+        }
+        return weekdayLabel(for: adaptedDateKey(for: bucket))
+    }
+
+    private func tooltipDateLabel(for bucket: DailyTokenUsage) -> String {
+        "\(adaptedDateKey(for: bucket)) · \(dayLabel(for: bucket))"
+    }
+
+    private func weekdayLabel(for dateKey: String) -> String {
+        let parts = dateKey.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3,
+              let date = Calendar.current.date(
+                  from: DateComponents(year: parts[0], month: parts[1], day: parts[2])
+              ) else { return dateKey }
+        let weekday = Calendar.current.component(.weekday, from: date)
+        if localization.isChinese {
+            return ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][weekday - 1]
+        }
+        return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][weekday - 1]
+    }
 }
 
 private struct TokenBarTooltip: View {
@@ -2167,6 +2217,8 @@ private struct TokenBarTooltip: View {
             Text(displayDate)
                 .font(.system(size: 8, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.58))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
             Text(TokenCountFormatter.compact(bucket.tokens, style: unitStyle))
                 .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)

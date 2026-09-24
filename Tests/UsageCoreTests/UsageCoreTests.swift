@@ -251,6 +251,48 @@ final class UsageCoreTests: XCTestCase {
         )
     }
 
+    func testLatestSevenBucketsMapToConsecutiveLocalDaysEndingToday() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let referenceDate = calendar.date(
+            from: DateComponents(year: 2026, month: 9, day: 25)
+        )!
+        let usage = AccountTokenUsage(
+            summary: TokenUsageSummary(
+                lifetimeTokens: nil,
+                peakDailyTokens: nil,
+                longestRunningTurnSec: nil,
+                currentStreakDays: nil,
+                longestStreakDays: nil
+            ),
+            dailyUsageBuckets: [
+                DailyTokenUsage(startDate: "2026-09-02", tokens: 100),
+                DailyTokenUsage(startDate: "2026-09-05", tokens: 200),
+                DailyTokenUsage(startDate: "2026-09-11", tokens: 300),
+                DailyTokenUsage(startDate: "2026-09-14", tokens: 400),
+                DailyTokenUsage(startDate: "2026-09-16", tokens: 500),
+                DailyTokenUsage(startDate: "2026-09-22", tokens: 600),
+                DailyTokenUsage(startDate: "2026-09-24", tokens: 700),
+            ]
+        )
+
+        let adaptedDates = usage.orderedDailyUsageBuckets.map {
+            usage.adaptedDateKey(for: $0, through: referenceDate, calendar: calendar)
+        }
+        XCTAssertEqual(
+            adaptedDates,
+            [
+                "2026-09-19",
+                "2026-09-20",
+                "2026-09-21",
+                "2026-09-22",
+                "2026-09-23",
+                "2026-09-24",
+                "2026-09-25",
+            ]
+        )
+    }
+
     func testResolvesUserSelectedCodexExecutable() throws {
         let temporaryRoot = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

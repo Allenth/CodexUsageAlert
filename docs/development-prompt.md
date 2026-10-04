@@ -1,4 +1,4 @@
-# Codex 用量预警：开发复盘与可复用提示词
+# CoMex：开发复盘与可复用提示词
 
 这份文档用于从零生成一个可安装、可运行、可分发的原生 macOS Codex 用量监控应用。
 
@@ -36,18 +36,18 @@
 复制下面整段到一个新的 Codex 编程任务中即可。最好在一个空目录中执行。
 
 ```text
-请在当前目录从零开发并交付一个名为“Codex 用量预警”的原生 macOS 应用。不要只给方案或代码片段，要持续执行直到应用完成构建、通过测试、安装并实际打开验证。
+请在当前目录从零开发并交付一个名为“CoMex”的原生 macOS 应用。不要只给方案或代码片段，要持续执行直到应用完成构建、通过测试、安装并实际打开验证。
 
 一、产品目标
 
 开发一个 SwiftUI 菜单栏用量监控器，同时提供普通应用窗口。它从本机已经登录的 Codex CLI 读取 ChatGPT/Codex 额度和 Token 活动数据，定时刷新，并通过 macOS 系统通知提醒用户当天的额度增量偏高。
 
 默认配置：
-- 产品名：Codex 用量预警
-- 英文名：Codex Usage Alert
+- 产品名：CoMex
+- 中英文名统一使用：CoMex
 - Bundle ID：com.huijing.codex-usage-alert
 - 最低系统：macOS 13
-- 安装位置：~/Applications/Codex Usage Alert.app
+- 安装位置：~/Applications/CoMex.app
 - 自动刷新：300 秒，把该值定义成易修改的常量
 - 当日个人预算上限：20 个额度百分点
 - 预警阈值：5、10、15、20 个百分点
@@ -189,11 +189,11 @@ Package 至少包含：
    - 创建标准 `.app/Contents/{MacOS,Helpers,Resources}` 结构
    - 复制主程序、codex-usage helper、Info.plist 和 AppIcon.icns
    - 使用临时签名 `codesign --force --deep --sign -`
-4. 构建完成后安装到 `~/Applications/Codex Usage Alert.app`。替换旧版本前先结束旧进程并把旧应用移到废纸篓备份，不要不可恢复地删除用户文件。
+4. 构建完成后安装到 `~/Applications/CoMex.app`。替换旧版本前先结束旧进程并把旧应用移到废纸篓备份，不要不可恢复地删除用户文件。
 5. 注册并打开应用，确认进程存活、签名验证通过、窗口实际出现。
 6. 做一次真实界面检查：确保所有文字可读、窗口不裁切、Token 图表出现、菜单栏图标足够大、按钮可用。
 7. 生成：
-   - `dist/CodexUsageAlert-0.1.0-macOS.zip`
+   - `dist/CoMex-0.1.0-macOS.zip`
    - 可选的完整 release ZIP
 8. 用 `unzip -t` 验证压缩包。
 9. README 说明依赖、功能、构建、安装和分发限制。明确当前临时签名适合本机或测试分发；正式公开分发仍需要 Developer ID 签名和 Apple 公证。
@@ -245,13 +245,13 @@ Package 至少包含：
 ### 阶段 6：打包和安装
 
 ```text
-补齐 Info.plist、URL Scheme、README 和 scripts/build_app.sh。release 构建后组装标准 .app，内含主程序、codex-usage helper、Info.plist 和 AppIcon.icns，使用临时签名。运行全部测试，将应用安装到 ~/Applications，注册并打开，验证签名和进程。生成 dist/CodexUsageAlert-0.1.0-macOS.zip，并用 unzip -t 检验。替换旧版本时先移到废纸篓备份。
+补齐 Info.plist、URL Scheme、README 和 scripts/build_app.sh。release 构建后组装标准 .app，内含主程序、codex-usage helper、Info.plist 和 AppIcon.icns，使用临时签名。运行全部测试，将应用安装到 ~/Applications，注册并打开，验证签名和进程。生成 dist/CoMex-0.1.0-macOS.zip，并用 unzip -t 检验。替换旧版本时先移到废纸篓备份。
 ```
 
 ### 阶段 7：最终验收
 
 ```text
-对整个 Codex Usage Alert 做最终验收，不要新增无关功能。检查：额度方向是否正确；重置时间和周期是否正确；Token 数据是否显示；Token 请求失败是否降级；今日基线与跨日/重置逻辑；重复通知抑制；测试通知；登录启动；窗口重新打开；菜单栏图标尺寸；浅色/深色主题文字；应用签名；测试；ZIP 完整性。发现问题直接修复并重新构建、安装、打开验证，最后给出结果和文件路径。
+对整个 CoMex 做最终验收，不要新增无关功能。检查：额度方向是否正确；重置时间和周期是否正确；Token 数据是否显示；Token 请求失败是否降级；今日基线与跨日/重置逻辑；重复通知抑制；测试通知；登录启动；窗口重新打开；菜单栏图标尺寸；浅色/深色主题文字；应用签名；测试；ZIP 完整性。发现问题直接修复并重新构建、安装、打开验证，最后给出结果和文件路径。
 ```
 
 ## 五、常用后续修改提示词

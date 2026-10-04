@@ -1,4 +1,4 @@
-# Codex Usage Alert development rules
+# CoMex development rules
 
 These rules apply to every change in this repository.
 

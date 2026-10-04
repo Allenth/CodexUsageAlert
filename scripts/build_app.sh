@@ -8,8 +8,8 @@ set -euo pipefail
 SCRIPT_DIR="${0:A:h}"
 PROJECT_DIR="${SCRIPT_DIR:h}"
 OUTPUT_DIR="$PROJECT_DIR/dist"
-APP_DIR="$OUTPUT_DIR/Codex Usage Alert.app"
-EXPECTED_APP_DIR="$PROJECT_DIR/dist/Codex Usage Alert.app"
+APP_DIR="$OUTPUT_DIR/CoMex.app"
+EXPECTED_APP_DIR="$PROJECT_DIR/dist/CoMex.app"
 SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
 
 "$PROJECT_DIR/scripts/sync_version.sh"

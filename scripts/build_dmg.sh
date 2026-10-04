@@ -4,9 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="${0:A:h}"
 PROJECT_DIR="${SCRIPT_DIR:h}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PROJECT_DIR/Resources/Info.plist")"
-APP_DIR="$PROJECT_DIR/dist/Codex Usage Alert.app"
-DMG_PATH="$PROJECT_DIR/dist/CodexUsageAlert-${VERSION}-macOS.dmg"
-VOLUME_NAME="Codex Usage Alert ${VERSION}"
+APP_DIR="$PROJECT_DIR/dist/CoMex.app"
+DMG_PATH="$PROJECT_DIR/dist/CoMex-${VERSION}-macOS.dmg"
+VOLUME_NAME="CoMex ${VERSION}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 
 if [[ "$DMG_PATH" != "$PROJECT_DIR/dist/"*.dmg ]]; then
@@ -36,7 +36,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cp -R "$APP_DIR" "$STAGING_DIR/Codex Usage Alert.app"
+cp -R "$APP_DIR" "$STAGING_DIR/CoMex.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 cp "$PROJECT_DIR/docs/user-guide.txt" "$STAGING_DIR/使用说明.txt"
 cp "$PROJECT_DIR/LICENSE" "$STAGING_DIR/LICENSE.txt"

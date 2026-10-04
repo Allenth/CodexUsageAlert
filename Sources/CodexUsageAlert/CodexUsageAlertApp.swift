@@ -250,7 +250,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             .environmentObject(AppLocalization.shared)
         let hostingController = NSHostingController(rootView: rootView)
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "Codex Usage Alert"
+        window.title = "CoMex"
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.contentMinSize = NSSize(width: 380, height: 820)
         window.contentMaxSize = NSSize(width: 380, height: 920)
@@ -504,7 +504,7 @@ private struct UsagePopover: View {
                 .shadow(color: .cyan.opacity(0.2), radius: 8, y: 3)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(L("Codex 用量预警", "Codex Usage Alert"))
+                Text("CoMex")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                 Text(lastUpdatedText)
@@ -1260,6 +1260,17 @@ private struct ReleaseNote: Identifiable {
 
 private enum ReleaseNotes {
     static let all: [ReleaseNote] = [
+        ReleaseNote(
+            build: 27,
+            chineseItems: [
+                "应用正式更名为 CoMex。",
+                "统一更新窗口、通知、安装包与使用文档中的产品名称。",
+            ],
+            englishItems: [
+                "Rename the app to CoMex.",
+                "Use the new product name consistently across windows, notifications, packages, and documentation.",
+            ]
+        ),
         ReleaseNote(
             build: 26,
             chineseItems: [

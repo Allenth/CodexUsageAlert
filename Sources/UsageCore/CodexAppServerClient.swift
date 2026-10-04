@@ -157,7 +157,7 @@ public struct CodexAppServerClient: Sendable {
             "params": [
                 "clientInfo": [
                     "name": "codex_usage_alert",
-                    "title": "Codex Usage Alert",
+                    "title": "CoMex",
                     "version": "0.1.0",
                 ]
             ],

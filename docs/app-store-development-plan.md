@@ -1,4 +1,4 @@
-# Codex Usage Alert：Mac App Store 开发计划
+# CoMex：Mac App Store 开发计划
 
 ## 1. 目标
 

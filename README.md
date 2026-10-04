@@ -1,7 +1,7 @@
-# Codex Usage Alert / Codex 用量预警
+# CoMex
 
 <p align="center">
-  <img src="Resources/AppIcon.png" width="128" alt="Codex Usage Alert icon">
+  <img src="Resources/AppIcon.png" width="128" alt="CoMex icon">
 </p>
 
 一个原生 macOS 菜单栏用量监控器。它通过本机 `codex app-server` 读取当前 ChatGPT/Codex 额度窗口与 Token 活动数据，并在用量偏高时发送系统通知。
@@ -62,7 +62,7 @@ Token 活动接口不可用时，额度监控仍会继续工作。基础上限�
 ```bash
 swift test
 ./scripts/build_sandbox_app.sh
-open "dist-sandbox/Codex Usage Alert.app"
+open "dist-sandbox/CoMex.app"
 ```
 
 GitHub 开源发布使用正常安装版：
@@ -70,7 +70,7 @@ GitHub 开源发布使用正常安装版：
 ```bash
 swift test
 ./scripts/build_app.sh
-open "dist/Codex Usage Alert.app"
+open "dist/CoMex.app"
 ```
 
 两版来自同一套源码并共用 `Resources/AppIcon.icns`，但使用不同的 Bundle ID、权限和输出目录。开发时只运行沙盒版；正常安装版仅在发布验证时启动。首次启动时，请在 macOS 权限提示中允许系统通知。详细规则见[双版本构建与代码管理](docs/build-variants.md)。
@@ -104,7 +104,7 @@ docs/                       开发计划、提示词和项目文档
 - [Mac App Store 上架资料](docs/app-store-metadata.md)
 - [双版本构建与代码管理](docs/build-variants.md)
 - [版本号与更新记录规则](docs/versioning.md)
-- [从零生成 Codex 用量预警的完整开发提示词](docs/development-prompt.md)
+- [从零生成 CoMex 的完整开发提示词](docs/development-prompt.md)
 
 ## 分发说明
 

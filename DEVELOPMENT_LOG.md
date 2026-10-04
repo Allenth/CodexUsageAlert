@@ -1,4 +1,4 @@
-# Codex Usage Alert 开发日志
+# CoMex 开发日志
 
 本日志记录已经完成并可验证的开发工作。时间统一采用北京时间
 `Asia/Shanghai`，最新记录排列在最前。未完成或尚未提交的并行工作不记为
@@ -8,6 +8,23 @@
 验证结果以及分支/提交信息。版本来源以 `Resources/Info.plist` 为准。
 
 ## 进行中版本
+
+### 2026-10-04 15:23:59 CST (UTC+08:00) — 应用更名为 CoMex
+
+- 版本：`0.2.7`（Build `27`）。
+- 完成内容：将应用的对外品牌名称统一更名为 `CoMex`；同步更新
+  窗口标题、主页标题、测试通知、App Server 客户端标题、应用包、DMG
+  命名、中英文使用说明与开发文档。保留原 Bundle ID、Swift 模块名和
+  GitHub 仓库名，避免破坏用户设置、授权数据和工程兼容性。
+- 主要文件：`Resources/Info.plist`、本地化名称、
+  `Sources/CodexUsageAlert/`、`Sources/UsageCore/CodexAppServerClient.swift`、
+  构建脚本、更新日志和项目文档。
+- 验证：17 项 Swift 测试全部通过；沙盒 Release 构建、Info.plist 和
+  代码签名验证通过；覆盖安装 V0.2.7（Build 27）后确认安装路径为
+  `~/Applications/CoMex.app`，窗口、主页、macOS 菜单和运行中应用均显示
+  `CoMex`；旧应用已移到废纸篓保留可恢复备份。
+- 分支：`app-store/sandbox-prototype`。
+- 提交：pending commit。
 
 ### 2026-09-25 00:47:54 CST (UTC+08:00) — Token 最近七日本机日期
 
@@ -21,7 +38,7 @@
   V0.2.6（Build 26）后确认图表连续显示周六 09/19 至今天 09/25，最后一列
   为“今天”；详情浮窗显示 `2026-09-25 · 今天`，引导线准确指向最后一柱。
 - 分支：`app-store/sandbox-prototype`。
-- 提交：pending commit。
+- 提交：`17606a7`。
 
 ### 2026-09-23 11:00:32 CST (UTC+08:00) — Token 柱状图悬停引导线
 

@@ -1,4 +1,4 @@
-# Codex Usage Alert 文档库
+# CoMex 文档库
 
 这里集中保存项目的产品、开发、发布和维护文档。项目根目录只保留 GitHub 首页需要直接展示的 `README.md`、许可证和工程文件。
 

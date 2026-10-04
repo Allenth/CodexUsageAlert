@@ -25,7 +25,7 @@
 ```bash
 swift test
 ./scripts/build_sandbox_app.sh
-open "dist-sandbox/Codex Usage Alert.app"
+open "dist-sandbox/CoMex.app"
 ```
 
 日常只运行沙盒开发版，避免两个菜单栏进程同时读取数据、发送通知或造成界面差异判断错误。

@@ -8,8 +8,8 @@ set -euo pipefail
 SCRIPT_DIR="${0:A:h}"
 PROJECT_DIR="${SCRIPT_DIR:h}"
 OUTPUT_DIR="$PROJECT_DIR/dist-sandbox"
-APP_DIR="$OUTPUT_DIR/Codex Usage Alert.app"
-EXPECTED_APP_DIR="$PROJECT_DIR/dist-sandbox/Codex Usage Alert.app"
+APP_DIR="$OUTPUT_DIR/CoMex.app"
+EXPECTED_APP_DIR="$PROJECT_DIR/dist-sandbox/CoMex.app"
 
 "$PROJECT_DIR/scripts/sync_version.sh"
 
@@ -33,7 +33,7 @@ cp -R "$PROJECT_DIR/Resources/zh-Hans.lproj" "$APP_DIR/Contents/Resources/"
 
 /usr/libexec/PlistBuddy \
   -c "Set :CFBundleIdentifier com.huijing.codex-usage-alert.sandbox-prototype" \
-  -c "Set :CFBundleDisplayName Codex 用量预警 Sandbox" \
+  -c "Set :CFBundleDisplayName CoMex Sandbox" \
   -c "Delete :CFBundleURLTypes" \
   "$APP_DIR/Contents/Info.plist"
 

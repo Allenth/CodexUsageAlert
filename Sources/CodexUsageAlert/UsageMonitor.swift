@@ -298,7 +298,7 @@ final class UsageMonitor: ObservableObject {
     func sendTestNotification() {
         sendNotification(
             identifier: "codex-usage-test-\(UUID().uuidString)",
-            title: L("Codex 用量预警测试", "Codex Usage Alert Test"),
+            title: L("CoMex 预警测试", "CoMex Alert Test"),
             body: L(
                 "系统通知工作正常。达到 5%、10%、15% 或 20% 的当日增量时会提醒你。",
                 "Notifications are working. You will be alerted at 5%, 10%, 15%, and the daily cap."

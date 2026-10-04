@@ -19,7 +19,7 @@
 
 ```bash
 ./scripts/build_sandbox_app.sh
-open "dist-sandbox/Codex Usage Alert.app"
+open "dist-sandbox/CoMex.app"
 ```
 
 原型使用临时签名，仅用于验证沙盒行为。正式 Mac App Store 构建仍需要 Xcode 工程、分发证书和 provisioning profile。

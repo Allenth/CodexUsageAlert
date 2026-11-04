@@ -70,20 +70,6 @@ public struct AccountTokenUsage: Codable, Equatable, Sendable {
         self.dailyUsageBuckets = dailyUsageBuckets
     }
 
-    public var orderedDailyUsageBuckets: [DailyTokenUsage] {
-        dailyUsageBuckets.sorted { $0.startDate < $1.startDate }
-    }
-
-    public var latestDailyBucket: DailyTokenUsage? {
-        orderedDailyUsageBuckets.last
-    }
-
-    public var previousDailyBucket: DailyTokenUsage? {
-        let buckets = orderedDailyUsageBuckets
-        guard buckets.count >= 2 else { return nil }
-        return buckets[buckets.count - 2]
-    }
-
     public func monthToDateTokens(
         through date: Date = Date(),
         calendar: Calendar = .current
@@ -102,71 +88,20 @@ public struct AccountTokenUsage: Codable, Equatable, Sendable {
             .max()
     }
 
-    public func tokens(
-        on date: Date,
-        calendar: Calendar = .current
-    ) -> Int64? {
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
-        guard let year = components.year,
-              let month = components.month,
-              let day = components.day else { return nil }
-        let key = String(format: "%04d-%02d-%02d", year, month, day)
-        return dailyUsageBuckets.first(where: { $0.startDate == key })?.tokens
-    }
-
-    public func todayTokens() -> Int64? {
-        latestDailyBucket?.tokens
-    }
-
-    public func yesterdayTokens() -> Int64? {
-        previousDailyBucket?.tokens
-    }
-
-    public func latestUsageDate(
-        through date: Date = Date(),
-        calendar: Calendar = .current
-    ) -> String? {
-        latestDailyBucket?.startDate
-    }
-
-    public func adaptedDateKey(
-        for bucket: DailyTokenUsage,
-        through date: Date = Date(),
-        calendar: Calendar = .current
-    ) -> String {
-        guard let adaptedDate = adaptedDate(for: bucket, through: date, calendar: calendar) else {
-            return bucket.startDate
-        }
-        let components = calendar.dateComponents([.year, .month, .day], from: adaptedDate)
-        guard let year = components.year,
-              let month = components.month,
-              let day = components.day else { return bucket.startDate }
-        return String(format: "%04d-%02d-%02d", year, month, day)
-    }
-
     private func monthToDateBuckets(
         through date: Date,
         calendar: Calendar
     ) -> [DailyTokenUsage] {
-        orderedDailyUsageBuckets.filter { bucket in
-            guard let adaptedDate = adaptedDate(for: bucket, through: date, calendar: calendar) else {
-                return false
-            }
-            return calendar.isDate(adaptedDate, equalTo: date, toGranularity: .month)
-                && adaptedDate <= calendar.startOfDay(for: date)
-        }
-    }
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        guard let year = components.year,
+              let month = components.month,
+              let day = components.day else { return [] }
 
-    private func adaptedDate(
-        for bucket: DailyTokenUsage,
-        through date: Date,
-        calendar: Calendar
-    ) -> Date? {
-        let buckets = orderedDailyUsageBuckets
-        guard let index = buckets.firstIndex(where: { $0.id == bucket.id }) else { return nil }
-        let localToday = calendar.startOfDay(for: date)
-        let dayOffset = index - (buckets.count - 1)
-        return calendar.date(byAdding: .day, value: dayOffset, to: localToday)
+        let monthPrefix = String(format: "%04d-%02d-", year, month)
+        let todayKey = String(format: "%04d-%02d-%02d", year, month, day)
+        return dailyUsageBuckets.filter {
+            $0.startDate.hasPrefix(monthPrefix) && $0.startDate <= todayKey
+        }
     }
 }
 
@@ -262,163 +197,18 @@ public enum UsageAlertLevel: Int, Codable, Comparable, Sendable {
 }
 
 public enum DailyUsagePolicy {
-    public static let defaultThresholds: [Double] = DailyAlertThresholds.default.values
+    public static let defaultThresholds: [Double] = [5, 10, 15, 20]
 
     public static func increase(baseline: Double, current: Double) -> Double {
         guard current >= baseline else { return 0 }
         return current - baseline
     }
 
-    public static func level(
-        for increase: Double,
-        dailyCap: Double? = nil,
-        thresholds: DailyAlertThresholds = .default
-    ) -> UsageAlertLevel {
-        let values = thresholds.normalized
-        if increase >= max(values.baseCap, dailyCap ?? values.baseCap) { return .cap }
-        if increase >= values.high { return .high }
-        if increase >= values.reminder { return .reminder }
-        if increase >= values.notice { return .notice }
+    public static func level(for increase: Double) -> UsageAlertLevel {
+        if increase >= 20 { return .cap }
+        if increase >= 15 { return .high }
+        if increase >= 10 { return .reminder }
+        if increase >= 5 { return .notice }
         return .normal
-    }
-
-    public static func notificationThresholds(
-        dailyCap: Double,
-        thresholds: DailyAlertThresholds = .default
-    ) -> [Double] {
-        let values = thresholds.normalized
-        let cap = max(values.baseCap, dailyCap)
-        if cap > values.baseCap { return values.values + [cap] }
-        return values.values
-    }
-}
-
-public struct DailyAlertThresholds: Codable, Equatable, Sendable {
-    public static let `default` = DailyAlertThresholds(
-        notice: 5,
-        reminder: 10,
-        high: 15,
-        baseCap: 20
-    )
-
-    public let notice: Double
-    public let reminder: Double
-    public let high: Double
-    public let baseCap: Double
-
-    public init(notice: Double, reminder: Double, high: Double, baseCap: Double) {
-        self.notice = notice
-        self.reminder = reminder
-        self.high = high
-        self.baseCap = baseCap
-    }
-
-    public var normalized: DailyAlertThresholds {
-        let cap = min(100, max(0.5, baseCap))
-        let first = min(cap, max(0.5, notice))
-        let second = min(cap, max(first, reminder))
-        let third = min(cap, max(second, high))
-        return DailyAlertThresholds(
-            notice: first,
-            reminder: second,
-            high: third,
-            baseCap: cap
-        )
-    }
-
-    public var values: [Double] {
-        let values = normalized
-        return [values.notice, values.reminder, values.high, values.baseCap]
-    }
-
-    public func scaled(toBaseCap newBaseCap: Double) -> DailyAlertThresholds {
-        let current = normalized
-        let newCap = min(100, max(0.5, newBaseCap))
-        let ratio = newCap / current.baseCap
-        func rounded(_ value: Double) -> Double {
-            (value * ratio * 10).rounded() / 10
-        }
-        return DailyAlertThresholds(
-            notice: rounded(current.notice),
-            reminder: rounded(current.reminder),
-            high: rounded(current.high),
-            baseCap: newCap
-        ).normalized
-    }
-}
-
-public enum RolloverUsageSource: String, Codable, Equatable, Sendable {
-    case localDailySnapshots
-    case windowBaselineEstimate
-}
-
-public struct DailyBudgetRollover: Equatable, Sendable {
-    public let sustainableDailyBudgetPercent: Double
-    public let baseDailyCapPercent: Double
-    public let yesterdayUsedPercent: Double?
-    public let carriedPercent: Double
-    public let todayAvailablePercent: Double
-    public let sourceDay: String?
-    public let yesterdayUsageSource: RolloverUsageSource?
-
-    public var hasYesterdayData: Bool {
-        yesterdayUsedPercent != nil
-    }
-
-    public init(
-        sustainableDailyBudgetPercent: Double,
-        baseDailyCapPercent: Double,
-        yesterdayUsedPercent: Double?,
-        carriedPercent: Double,
-        todayAvailablePercent: Double,
-        sourceDay: String?,
-        yesterdayUsageSource: RolloverUsageSource?
-    ) {
-        self.sustainableDailyBudgetPercent = sustainableDailyBudgetPercent
-        self.baseDailyCapPercent = baseDailyCapPercent
-        self.yesterdayUsedPercent = yesterdayUsedPercent
-        self.carriedPercent = carriedPercent
-        self.todayAvailablePercent = todayAvailablePercent
-        self.sourceDay = sourceDay
-        self.yesterdayUsageSource = yesterdayUsageSource
-    }
-}
-
-public enum RolloverBudgetCalculator {
-    public static func sustainableDailyBudget(windowDurationMins: Double) -> Double {
-        guard windowDurationMins > 0 else { return 0 }
-        return min(100, 100 / (windowDurationMins / 1_440))
-    }
-
-    public static func calculate(
-        windowDurationMins: Double,
-        yesterdayUsedPercent: Double?,
-        sourceDay: String?,
-        yesterdayUsageSource: RolloverUsageSource? = nil,
-        baseDailyCapPercent: Double = 20
-    ) -> DailyBudgetRollover {
-        let sustainable = sustainableDailyBudget(windowDurationMins: windowDurationMins)
-        let baseCap = min(100, max(0, baseDailyCapPercent))
-        let used = yesterdayUsedPercent.map { min(100, max(0, $0)) }
-        let carried = used.map { max(0, sustainable - $0) } ?? 0
-
-        return DailyBudgetRollover(
-            sustainableDailyBudgetPercent: sustainable,
-            baseDailyCapPercent: baseCap,
-            yesterdayUsedPercent: used,
-            carriedPercent: carried,
-            todayAvailablePercent: min(100, baseCap + carried),
-            sourceDay: used == nil ? nil : sourceDay,
-            yesterdayUsageSource: used == nil ? nil : yesterdayUsageSource
-        )
-    }
-}
-
-public enum RolloverBudgetCachePolicy {
-    public static func shouldReuseCachedBudget(
-        cachedHasYesterdayData: Bool,
-        canDeriveYesterdayDataNow: Bool
-    ) -> Bool {
-        cachedHasYesterdayData || !canDeriveYesterdayDataNow
     }
 }

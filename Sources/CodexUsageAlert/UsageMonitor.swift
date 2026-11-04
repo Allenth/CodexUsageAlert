@@ -13,6 +13,16 @@ enum RefreshSchedule: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var title: String {
+        switch self {
+        case .fiveMinutes: return "每 5 分钟"
+        case .fifteenMinutes: return "每 15 分钟"
+        case .thirtyMinutes: return "每 30 分钟"
+        case .hourly: return "每 1 小时"
+        case .daily: return "每天固定时间"
+        }
+    }
+
     var interval: TimeInterval? {
         switch self {
         case .fiveMinutes: return 5 * 60
@@ -32,24 +42,15 @@ final class UsageMonitor: ObservableObject {
     @Published var tokenUsage: AccountTokenUsage?
     @Published var tokenUsageErrorMessage: String?
     @Published var dailyIncrease: Double = 0
-    @Published var rolloverBudget: DailyBudgetRollover?
     @Published var errorMessage: String?
     @Published var isRefreshing = false
-    @Published private(set) var isLaunchingCodex = false
-    @Published var notificationStatus = "unknown"
+    @Published var notificationStatus = "未测试"
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @Published private(set) var codexSelectionName: String?
-    @Published private(set) var codexHomeSelectionName: String?
-    @Published private(set) var shouldOfferCodexSelection = false
     @Published private(set) var refreshSchedule: RefreshSchedule
     @Published private(set) var dailyRefreshTime: Date
     @Published private(set) var tokenUnitStyle: TokenUnitStyle
-    @Published private(set) var alertThresholds: DailyAlertThresholds
 
     private let defaults = UserDefaults.standard
-    private let codexAccessStore = CodexAccessStore()
-    private var codexGrant: CodexExecutableGrant?
-    private var codexHomeGrant: CodexHomeGrant?
     private var timer: Timer?
 
     init() {
@@ -66,23 +67,6 @@ final class UsageMonitor: ObservableObject {
         tokenUnitStyle = TokenUnitStyle(
             rawValue: defaults.string(forKey: "tokenUnitStyle") ?? ""
         ) ?? .chinese
-        let defaultThresholds = DailyAlertThresholds.default
-        alertThresholds = DailyAlertThresholds(
-            notice: defaults.object(forKey: "dailyNoticeThreshold") as? Double
-                ?? defaultThresholds.notice,
-            reminder: defaults.object(forKey: "dailyReminderThreshold") as? Double
-                ?? defaultThresholds.reminder,
-            high: defaults.object(forKey: "dailyHighThreshold") as? Double
-                ?? defaultThresholds.high,
-            baseCap: defaults.object(forKey: "dailyBaseCapThreshold") as? Double
-                ?? defaultThresholds.baseCap
-        ).normalized
-        codexGrant = codexAccessStore.loadGrant()
-        codexHomeGrant = codexAccessStore.loadCodexHomeGrant()
-        codexSelectionName = codexGrant?.displayName
-        codexHomeSelectionName = codexHomeGrant?.displayName
-        shouldOfferCodexSelection = Self.isRunningInAppSandbox
-            && (codexGrant == nil || codexHomeGrant == nil)
 
         requestNotificationPermission()
         refresh()
@@ -95,32 +79,14 @@ final class UsageMonitor: ObservableObject {
     }
 
     var level: UsageAlertLevel {
-        DailyUsagePolicy.level(
-            for: dailyIncrease,
-            dailyCap: rolloverBudget?.todayAvailablePercent ?? alertThresholds.baseCap,
-            thresholds: alertThresholds
-        )
+        DailyUsagePolicy.level(for: dailyIncrease)
     }
 
     var refreshSummary: String {
         if refreshSchedule == .daily {
-            return L(
-                "每天 \(AppLocalization.shared.time(dailyRefreshTime)) 更新",
-                "Daily at \(AppLocalization.shared.time(dailyRefreshTime))"
-            )
+            return "每天 \(dailyRefreshTime.formatted(.dateTime.hour().minute())) 更新"
         }
-        return AppLocalization.shared.refreshScheduleTitle(refreshSchedule)
-    }
-
-    var codexSourceSummary: String {
-        codexSelectionName ?? L("自动查找本机 Codex", "Find Codex automatically")
-    }
-
-    var codexHomeSourceSummary: String {
-        codexHomeSelectionName ?? L(
-            "尚未授权 Codex 登录资料",
-            "Codex sign-in data not authorized"
-        )
+        return "\(refreshSchedule.title)更新"
     }
 
     func setRefreshSchedule(_ schedule: RefreshSchedule) {
@@ -147,29 +113,17 @@ final class UsageMonitor: ObservableObject {
     func applySettings(
         refreshSchedule schedule: RefreshSchedule,
         dailyRefreshTime date: Date,
-        tokenUnitStyle style: TokenUnitStyle,
-        alertThresholds thresholds: DailyAlertThresholds
+        tokenUnitStyle style: TokenUnitStyle
     ) {
-        let normalizedThresholds = thresholds.normalized
-        let thresholdsChanged = normalizedThresholds != alertThresholds
         refreshSchedule = schedule
         dailyRefreshTime = date
         tokenUnitStyle = style
-        alertThresholds = normalizedThresholds
 
         defaults.set(schedule.rawValue, forKey: "refreshSchedule")
         let components = Calendar.current.dateComponents([.hour, .minute], from: date)
         let minutes = (components.hour ?? 9) * 60 + (components.minute ?? 0)
         defaults.set(minutes, forKey: "dailyRefreshMinutes")
         defaults.set(style.rawValue, forKey: "tokenUnitStyle")
-        defaults.set(normalizedThresholds.notice, forKey: "dailyNoticeThreshold")
-        defaults.set(normalizedThresholds.reminder, forKey: "dailyReminderThreshold")
-        defaults.set(normalizedThresholds.high, forKey: "dailyHighThreshold")
-        defaults.set(normalizedThresholds.baseCap, forKey: "dailyBaseCapThreshold")
-        if thresholdsChanged {
-            defaults.set([], forKey: "notifiedThresholdKeys")
-            recalculateRolloverBudgetForCurrentThresholds()
-        }
         scheduleNextRefresh()
     }
 
@@ -177,132 +131,31 @@ final class UsageMonitor: ObservableObject {
         guard !isRefreshing else { return }
         isRefreshing = true
         errorMessage = nil
-        let grant = codexGrant
-        let homeGrant = codexHomeGrant
 
         DispatchQueue.global(qos: .utility).async {
-            let result = Result {
-                try CodexAppServerClient(
-                    executableURL: grant?.executableURL,
-                    securityScopedResourceURL: grant?.selectedURL,
-                    codexHomeURL: homeGrant?.selectedURL
-                ).fetchDashboardSnapshot()
-            }
+            let result = Result { try CodexAppServerClient().fetchDashboardSnapshot() }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.isRefreshing = false
                 switch result {
                 case .success(let dashboard):
-                    self.shouldOfferCodexSelection = false
                     self.accept(dashboard.quota)
                     if let tokenUsage = dashboard.tokenUsage {
                         self.tokenUsage = tokenUsage
                     }
                     self.tokenUsageErrorMessage = dashboard.tokenUsageError
                 case .failure(let error):
-                    self.errorMessage = self.localizedErrorMessage(error)
-                    if Self.isRunningInAppSandbox || Self.isExecutableNotFound(error) {
-                        self.shouldOfferCodexSelection = true
-                    }
+                    self.errorMessage = error.localizedDescription
                 }
             }
         }
-    }
-
-    var canOpenCodexApplication: Bool {
-        Self.codexApplicationURL != nil
-    }
-
-    func openCodexApplication() {
-        guard let applicationURL = Self.codexApplicationURL else {
-            errorMessage = L(
-                "未找到 Codex/ChatGPT 应用。请先安装并登录，然后重新刷新。",
-                "Codex/ChatGPT was not found. Install and sign in, then refresh again."
-            )
-            return
-        }
-
-        isLaunchingCodex = true
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.openApplication(
-            at: applicationURL,
-            configuration: configuration
-        ) { [weak self] _, error in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                if let error {
-                    self.isLaunchingCodex = false
-                    self.errorMessage = L(
-                        "无法打开 Codex/ChatGPT：\(error.localizedDescription)",
-                        "Could not open Codex/ChatGPT: \(error.localizedDescription)"
-                    )
-                    return
-                }
-
-                self.errorMessage = L(
-                    "Codex/ChatGPT 已启动，正在等待登录状态就绪…",
-                    "Codex/ChatGPT is open. Waiting for sign-in to become ready…"
-                )
-                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
-                    guard let self else { return }
-                    self.isLaunchingCodex = false
-                    self.refresh()
-                }
-            }
-        }
-    }
-
-    func chooseCodexLocation() {
-        do {
-            guard let grant = try codexAccessStore.chooseGrant() else { return }
-            codexGrant = grant
-            codexSelectionName = grant.displayName
-            shouldOfferCodexSelection = Self.isRunningInAppSandbox && codexHomeGrant == nil
-            refresh()
-        } catch {
-            errorMessage = localizedErrorMessage(error)
-            shouldOfferCodexSelection = true
-        }
-    }
-
-    func chooseCodexHomeLocation() {
-        do {
-            guard let grant = try codexAccessStore.chooseCodexHomeGrant() else { return }
-            codexHomeGrant = grant
-            codexHomeSelectionName = grant.displayName
-            shouldOfferCodexSelection = Self.isRunningInAppSandbox && codexGrant == nil
-            refresh()
-        } catch {
-            errorMessage = localizedErrorMessage(error)
-            shouldOfferCodexSelection = true
-        }
-    }
-
-    func clearCodexLocation() {
-        codexAccessStore.clearGrant()
-        codexGrant = nil
-        codexSelectionName = nil
-        shouldOfferCodexSelection = Self.isRunningInAppSandbox
-        refresh()
-    }
-
-    func clearCodexHomeLocation() {
-        codexAccessStore.clearCodexHomeGrant()
-        codexHomeGrant = nil
-        codexHomeSelectionName = nil
-        shouldOfferCodexSelection = Self.isRunningInAppSandbox
-        refresh()
     }
 
     func sendTestNotification() {
         sendNotification(
             identifier: "codex-usage-test-\(UUID().uuidString)",
-            title: L("CoMex 预警测试", "CoMex Alert Test"),
-            body: L(
-                "系统通知工作正常。达到 5%、10%、15% 或 20% 的当日增量时会提醒你。",
-                "Notifications are working. You will be alerted at 5%, 10%, 15%, and the daily cap."
-            )
+            title: "Codex 用量预警测试",
+            body: "系统通知工作正常。达到 5%、10%、15% 或 20% 的当日增量时会提醒你。"
         )
     }
 
@@ -316,10 +169,7 @@ final class UsageMonitor: ObservableObject {
             launchAtLogin = SMAppService.mainApp.status == .enabled
         } catch {
             launchAtLogin = SMAppService.mainApp.status == .enabled
-            errorMessage = L(
-                "无法更新开机启动设置：\(error.localizedDescription)",
-                "Could not update the launch-at-login setting: \(error.localizedDescription)"
-            )
+            errorMessage = "无法更新开机启动设置：\(error.localizedDescription)"
         }
     }
 
@@ -363,192 +213,38 @@ final class UsageMonitor: ObservableObject {
         let today = Self.dayKey(for: newSnapshot.fetchedAt)
         let savedDay = defaults.string(forKey: "baselineDay")
         let savedBaseline = defaults.object(forKey: "baselineUsedPercent") as? Double
-        let budget = prepareRolloverBudget(
-            for: today,
-            snapshot: newSnapshot,
-            previousBaselineDay: savedDay,
-            previousBaselinePercent: savedBaseline
-        )
-        rolloverBudget = budget
 
-        if savedDay != today || savedBaseline == nil {
+        if savedDay != today || savedBaseline == nil || newSnapshot.usedPercent < (savedBaseline ?? 0) {
             defaults.set(today, forKey: "baselineDay")
             defaults.set(newSnapshot.usedPercent, forKey: "baselineUsedPercent")
-            defaults.set(0.0, forKey: "dailyUsageOffset")
             defaults.set([], forKey: "notifiedThresholds")
-            defaults.set([], forKey: "notifiedThresholdKeys")
             dailyIncrease = 0
-            saveDailyUsage(0, for: today)
             return
         }
 
-        guard let baseline = savedBaseline else { return }
-
-        if newSnapshot.usedPercent < baseline {
-            let recorded = recordedDailyUsage(for: today) ?? dailyIncrease
-            defaults.set(newSnapshot.usedPercent, forKey: "baselineUsedPercent")
-            defaults.set(recorded, forKey: "dailyUsageOffset")
-            dailyIncrease = recorded
-            saveDailyUsage(recorded, for: today)
-            return
-        }
-
-        let offset = defaults.object(forKey: "dailyUsageOffset") as? Double ?? 0
-        dailyIncrease = offset + DailyUsagePolicy.increase(
+        let baseline = savedBaseline ?? newSnapshot.usedPercent
+        dailyIncrease = DailyUsagePolicy.increase(
             baseline: baseline,
             current: newSnapshot.usedPercent
         )
-        saveDailyUsage(dailyIncrease, for: today)
         notifyForCrossedThresholds()
     }
 
-    private func prepareRolloverBudget(
-        for today: String,
-        snapshot: UsageSnapshot,
-        previousBaselineDay: String?,
-        previousBaselinePercent: Double?
-    ) -> DailyBudgetRollover {
-        let schemaVersion = 3
-        let cachedBudget: DailyBudgetRollover?
-        if defaults.string(forKey: "rolloverBudgetDay") == today,
-           defaults.integer(forKey: "rolloverBudgetSchemaVersion") == schemaVersion {
-            cachedBudget = RolloverBudgetCalculator.calculate(
-                windowDurationMins: snapshot.windowDurationMins,
-                yesterdayUsedPercent: defaults.object(forKey: "rolloverYesterdayUsed") as? Double,
-                sourceDay: defaults.string(forKey: "rolloverSourceDay"),
-                yesterdayUsageSource: defaults.string(forKey: "rolloverUsageSource")
-                    .flatMap { RolloverUsageSource(rawValue: $0) },
-                baseDailyCapPercent: alertThresholds.baseCap
-            )
-        } else {
-            cachedBudget = nil
-        }
-
-        let previousDate = Calendar.current.date(
-            byAdding: .day,
-            value: -1,
-            to: snapshot.fetchedAt
-        )
-        let previousDay = previousDate.map(Self.dayKey(for:))
-        let usageDay = defaults.string(forKey: "dailyUsageRecordDay")
-        let hasRecordedYesterday = previousDay != nil
-            && previousBaselineDay == previousDay
-            && usageDay == previousDay
-
-        let windowStartedAt = snapshot.resetsAt.addingTimeInterval(
-            -snapshot.windowDurationMins * 60
-        )
-        let windowStartedYesterday = previousDay != nil
-            && Self.dayKey(for: windowStartedAt) == previousDay
-        let canUseWindowBaselineEstimate = previousDay != nil
-            && previousBaselineDay == today
-            && previousBaselinePercent != nil
-            && windowStartedYesterday
-        let canDeriveYesterdayDataNow = hasRecordedYesterday || canUseWindowBaselineEstimate
-
-        if let cachedBudget,
-           RolloverBudgetCachePolicy.shouldReuseCachedBudget(
-               cachedHasYesterdayData: cachedBudget.hasYesterdayData,
-               canDeriveYesterdayDataNow: canDeriveYesterdayDataNow
-           ) {
-            return cachedBudget
-        }
-
-        let yesterdayUsed: Double?
-        let usageSource: RolloverUsageSource?
-        if hasRecordedYesterday {
-            yesterdayUsed = defaults.object(forKey: "dailyUsageRecordPercent") as? Double
-            usageSource = .localDailySnapshots
-        } else if canUseWindowBaselineEstimate {
-            yesterdayUsed = previousBaselinePercent
-            usageSource = .windowBaselineEstimate
-        } else {
-            yesterdayUsed = nil
-            usageSource = nil
-        }
-        let budget = RolloverBudgetCalculator.calculate(
-            windowDurationMins: snapshot.windowDurationMins,
-            yesterdayUsedPercent: yesterdayUsed,
-            sourceDay: yesterdayUsed == nil ? nil : previousDay,
-            yesterdayUsageSource: usageSource,
-            baseDailyCapPercent: alertThresholds.baseCap
-        )
-
-        defaults.set(today, forKey: "rolloverBudgetDay")
-        defaults.set(schemaVersion, forKey: "rolloverBudgetSchemaVersion")
-        if let yesterdayUsed {
-            defaults.set(yesterdayUsed, forKey: "rolloverYesterdayUsed")
-        } else {
-            defaults.removeObject(forKey: "rolloverYesterdayUsed")
-        }
-        if let usageSource {
-            defaults.set(usageSource.rawValue, forKey: "rolloverUsageSource")
-        } else {
-            defaults.removeObject(forKey: "rolloverUsageSource")
-        }
-        defaults.removeObject(forKey: "rolloverYesterdayAvailable")
-        defaults.removeObject(forKey: "availableBudgetDay")
-        defaults.removeObject(forKey: "availableBudgetPercent")
-        if let previousDay, yesterdayUsed != nil {
-            defaults.set(previousDay, forKey: "rolloverSourceDay")
-        } else {
-            defaults.removeObject(forKey: "rolloverSourceDay")
-        }
-        return budget
-    }
-
-    private func recordedDailyUsage(for day: String) -> Double? {
-        guard defaults.string(forKey: "dailyUsageRecordDay") == day else { return nil }
-        return defaults.object(forKey: "dailyUsageRecordPercent") as? Double
-    }
-
-    private func saveDailyUsage(_ value: Double, for day: String) {
-        defaults.set(day, forKey: "dailyUsageRecordDay")
-        defaults.set(max(0, value), forKey: "dailyUsageRecordPercent")
-    }
-
     private func notifyForCrossedThresholds() {
-        let dailyCap = rolloverBudget?.todayAvailablePercent ?? alertThresholds.baseCap
-        var notified = Set(defaults.stringArray(forKey: "notifiedThresholdKeys") ?? [])
-        let crossed = DailyUsagePolicy.notificationThresholds(
-            dailyCap: dailyCap,
-            thresholds: alertThresholds
-        )
-            .filter { threshold in
-                dailyIncrease >= threshold && !notified.contains(thresholdKey(threshold))
-            }
+        var notified = Set(defaults.array(forKey: "notifiedThresholds") as? [Int] ?? [])
+        let crossed = DailyUsagePolicy.defaultThresholds
+            .map(Int.init)
+            .filter { dailyIncrease >= Double($0) && !notified.contains($0) }
 
         guard let highest = crossed.max() else { return }
-        notified.formUnion(crossed.map(thresholdKey))
-        defaults.set(Array(notified).sorted(), forKey: "notifiedThresholdKeys")
+        notified.formUnion(crossed)
+        defaults.set(Array(notified).sorted(), forKey: "notifiedThresholds")
 
-        let level = DailyUsagePolicy.level(
-            for: dailyIncrease,
-            dailyCap: dailyCap,
-            thresholds: alertThresholds
-        )
+        let level = DailyUsagePolicy.level(for: dailyIncrease)
         sendNotification(
-            identifier: "codex-daily-\(Self.dayKey(for: Date()))-\(thresholdKey(highest))",
-            title: AppLocalization.shared.alertLevelTitle(level),
-            body: L(
-                "今天已使用 \(Self.percent(dailyIncrease))%，今日上限 \(Self.percent(dailyCap))%；当前周期累计使用 \(Self.percent(snapshot?.usedPercent ?? 0))%。",
-                "Today you used \(Self.percent(dailyIncrease)) percentage points of a \(Self.percent(dailyCap))% cap. Current window usage is \(Self.percent(snapshot?.usedPercent ?? 0))%."
-            )
-        )
-    }
-
-    private func thresholdKey(_ value: Double) -> String {
-        String(format: "%.1f", value)
-    }
-
-    private func recalculateRolloverBudgetForCurrentThresholds() {
-        guard let snapshot, let budget = rolloverBudget else { return }
-        rolloverBudget = RolloverBudgetCalculator.calculate(
-            windowDurationMins: snapshot.windowDurationMins,
-            yesterdayUsedPercent: budget.yesterdayUsedPercent,
-            sourceDay: budget.sourceDay,
-            yesterdayUsageSource: budget.yesterdayUsageSource,
-            baseDailyCapPercent: alertThresholds.baseCap
+            identifier: "codex-daily-\(Self.dayKey(for: Date()))-\(highest)",
+            title: level.title,
+            body: "今天已消耗 \(Self.percent(dailyIncrease)) 个额度百分点；当前周期累计使用 \(Self.percent(snapshot?.usedPercent ?? 0))%。"
         )
     }
 
@@ -558,7 +254,7 @@ final class UsageMonitor: ObservableObject {
                 if let error {
                     self?.notificationStatus = error.localizedDescription
                 } else {
-                    self?.notificationStatus = granted ? "allowed" : "denied"
+                    self?.notificationStatus = granted ? "已允许" : "未允许"
                 }
             }
         }
@@ -572,58 +268,9 @@ final class UsageMonitor: ObservableObject {
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { [weak self] error in
             DispatchQueue.main.async {
-                self?.notificationStatus = error?.localizedDescription ?? "sent"
+                self?.notificationStatus = error?.localizedDescription ?? "已发送"
             }
         }
-    }
-
-    private func localizedErrorMessage(_ error: Error) -> String {
-        if let error = error as? CodexUsageClientError {
-            switch error {
-            case .executableNotFound:
-                return L(
-                    "未找到 Codex CLI。请先安装并登录 Codex。",
-                    "Codex CLI was not found. Install and sign in to Codex first."
-                )
-            case .serverExited:
-                return L(
-                    "Codex App Server 在返回用量前退出。",
-                    "Codex App Server exited before returning usage data."
-                )
-            case .timedOut:
-                return L("读取 Codex 用量超时。", "Timed out while reading Codex usage.")
-            case .invalidResponse(let detail):
-                return L(
-                    "Codex 返回了无法识别的数据：\(detail)",
-                    "Codex returned an unrecognized response: \(detail)"
-                )
-            case .serverError(let detail):
-                if detail.localizedCaseInsensitiveContains("failed to fetch codex rate limits") {
-                    return L(
-                        "Codex 尚未就绪。请先打开 Codex/ChatGPT 并确认已登录，然后返回刷新。",
-                        "Codex is not ready. Open Codex/ChatGPT, confirm you are signed in, then refresh."
-                    )
-                }
-                return L("Codex App Server 错误：\(detail)", "Codex App Server error: \(detail)")
-            }
-        }
-
-        if let error = error as? CodexAccessStoreError {
-            switch error {
-            case .unsupportedSelection:
-                return L(
-                    "所选项目中没有找到可执行的 Codex 程序。",
-                    "No executable Codex app was found in the selected item."
-                )
-            case .missingCodexAuthentication:
-                return L(
-                    "所选文件夹中没有找到 Codex 登录资料（auth.json）。",
-                    "Codex sign-in data (auth.json) was not found in the selected folder."
-                )
-            }
-        }
-
-        return error.localizedDescription
     }
 
     static func percent(_ value: Double) -> String {
@@ -636,31 +283,5 @@ final class UsageMonitor: ObservableObject {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
-    }
-
-    private static var isRunningInAppSandbox: Bool {
-        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
-    }
-
-    private static var codexApplicationURL: URL? {
-        let workspace = NSWorkspace.shared
-        for bundleIdentifier in ["com.openai.codex", "com.openai.chat"] {
-            if let url = workspace.urlForApplication(withBundleIdentifier: bundleIdentifier) {
-                return url
-            }
-        }
-
-        for path in ["/Applications/Codex.app", "/Applications/ChatGPT.app"] {
-            if FileManager.default.fileExists(atPath: path) {
-                return URL(fileURLWithPath: path)
-            }
-        }
-        return nil
-    }
-
-    private static func isExecutableNotFound(_ error: Error) -> Bool {
-        guard let clientError = error as? CodexUsageClientError else { return false }
-        if case .executableNotFound = clientError { return true }
-        return false
     }
 }

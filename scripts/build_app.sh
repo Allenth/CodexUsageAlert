@@ -1,25 +1,15 @@
 #!/bin/zsh
 set -euo pipefail
 
-# Open-source release build. Keep this artifact stopped during daily development;
-# use build_sandbox_app.sh for normal iteration. Both variants intentionally share
-# Resources/AppIcon.icns so the checked-in icon remains the single source of truth.
-
 SCRIPT_DIR="${0:A:h}"
 PROJECT_DIR="${SCRIPT_DIR:h}"
 OUTPUT_DIR="$PROJECT_DIR/dist"
-APP_DIR="$OUTPUT_DIR/CoMex.app"
-EXPECTED_APP_DIR="$PROJECT_DIR/dist/CoMex.app"
-SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
+APP_DIR="$OUTPUT_DIR/Codex Usage Alert.app"
 
-"$PROJECT_DIR/scripts/sync_version.sh"
-
-if [[ "$APP_DIR" != "$EXPECTED_APP_DIR" ]]; then
-  echo "拒绝清理非预期的构建目录：$APP_DIR" >&2
-  exit 1
-fi
-
-swift build --package-path "$PROJECT_DIR" -c release
+SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
+swift build --package-path "$PROJECT_DIR" -c release --sdk "$SDK_PATH" \
+  -Xlinker -platform_version -Xlinker macos -Xlinker 13.0 -Xlinker "$SDK_VERSION"
 
 if [[ -d "$APP_DIR" ]]; then
   rm -rf "$APP_DIR"
@@ -30,25 +20,13 @@ cp "$PROJECT_DIR/.build/release/CodexUsageAlert" "$APP_DIR/Contents/MacOS/CodexU
 cp "$PROJECT_DIR/.build/release/codex-usage" "$APP_DIR/Contents/Helpers/codex-usage"
 cp "$PROJECT_DIR/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
-cp -R "$PROJECT_DIR/Resources/en.lproj" "$APP_DIR/Contents/Resources/"
-cp -R "$PROJECT_DIR/Resources/zh-Hans.lproj" "$APP_DIR/Contents/Resources/"
+xcrun actool "$PROJECT_DIR/Resources/AppIcon.icon" \
+  --compile "$APP_DIR/Contents/Resources" \
+  --platform macosx --minimum-deployment-target 13.0 \
+  --app-icon AppIcon --output-partial-info-plist "$OUTPUT_DIR/app-icon-info.plist"
+# Preserve the reviewed high-resolution legacy fallback for macOS 13–15.
+cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
+/usr/libexec/PlistBuddy -c "Add :DTSDKName string macosx$SDK_VERSION" "$APP_DIR/Contents/Info.plist"
 
-if [[ "$SIGN_IDENTITY" == "-" ]]; then
-  codesign --force --deep --sign - "$APP_DIR"
-else
-  codesign \
-    --force \
-    --options runtime \
-    --timestamp \
-    --sign "$SIGN_IDENTITY" \
-    "$APP_DIR/Contents/Helpers/codex-usage"
-  codesign \
-    --force \
-    --options runtime \
-    --timestamp \
-    --sign "$SIGN_IDENTITY" \
-    "$APP_DIR"
-fi
-
-codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+codesign --force --deep --sign - "$APP_DIR"
 echo "$APP_DIR"

@@ -9,6 +9,16 @@
 
 ## 进行中版本
 
+### 2026-11-04 13:30:02 CST (UTC+08:00) — 按 A 为主合并项目并归档历史包
+
+- 版本：`0.2.8`（Build `28`）。
+- 完成内容：采用 A 的源码、菜单栏定位修复和图标资源；保留 A 全部 Git 历史及原目标仓库后续历史；保留 B 的开发日志、更新日志和独有文档。依赖 B 核心实现的沙盒、本地化与打包文件收录于 `legacy/b-only/`。历史打包目录按来源放入被忽略的 `archive-dist/`；原 A 目录和 ZIP 不变。
+- 主要文件：`Sources/`、`Tests/`、`Resources/`、构建及图标脚本、`.gitignore`、`legacy/b-only/`、`docs/merge-report.md`、`docs/merge-inventory.json`、历史文档和更新日志。
+- 验证：`swift build && swift test` 成功，10 项 XCTest 全部通过（菜单栏定位 4 项、核心用量 6 项）；保留 A 原有的 `UsageMonitor.swift:137` 捕获语义警告。Info.plist 校验和当前 Shell 脚本语法检查通过。逐文件 SHA-256 确认 44 个 A 文件完全一致，其余两个文件仅调整版本或忽略规则；8 个历史文件与 B 一致；3,083 个归档文件与来源一致且全部被 Git 忽略；A（含 .git）与原 ZIP 完整性检查通过。没有执行安装、签名、发布或 GUI 验证。
+- 分支：`merge/usage-sources`。
+- 提交：pending commit。
+- 交付与冲突详情：[合并报告](docs/merge-report.md)；原目标备份保留在本机合并前备份目录。
+
 ### 2026-10-04 15:23:59 CST (UTC+08:00) — 应用更名为 CoMex
 
 - 版本：`0.2.7`（Build `27`）。

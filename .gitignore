@@ -3,7 +3,11 @@
 .swiftpm/
 DerivedData/
 dist/
-dist-sandbox/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 *.zip
+
+
+# Local historical packages from the source merge
+archive-dist/
+dist-sandbox/

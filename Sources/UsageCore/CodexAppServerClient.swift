@@ -18,9 +18,6 @@ public enum CodexUsageClientError: LocalizedError {
         case .invalidResponse(let detail):
             return "Codex 返回了无法识别的数据：\(detail)"
         case .serverError(let detail):
-            if detail.localizedCaseInsensitiveContains("failed to fetch codex rate limits") {
-                return "Codex 尚未就绪。请先打开 Codex/ChatGPT 并确认已登录，然后返回刷新。"
-            }
             return "Codex App Server 错误：\(detail)"
         }
     }
@@ -28,22 +25,13 @@ public enum CodexUsageClientError: LocalizedError {
 
 public struct CodexAppServerClient: Sendable {
     public let executableURL: URL
-    public let securityScopedResourceURL: URL?
-    public let codexHomeURL: URL?
     public let timeout: TimeInterval
 
-    public init(
-        executableURL: URL? = nil,
-        securityScopedResourceURL: URL? = nil,
-        codexHomeURL: URL? = nil,
-        timeout: TimeInterval = 15
-    ) throws {
+    public init(executableURL: URL? = nil, timeout: TimeInterval = 15) throws {
         guard let resolved = executableURL ?? Self.resolveExecutable() else {
             throw CodexUsageClientError.executableNotFound
         }
         self.executableURL = resolved
-        self.securityScopedResourceURL = securityScopedResourceURL
-        self.codexHomeURL = codexHomeURL
         self.timeout = timeout
     }
 
@@ -71,50 +59,11 @@ public struct CodexAppServerClient: Sendable {
         return nil
     }
 
-    public static func resolveExecutable(fromUserSelection selectionURL: URL) -> URL? {
-        let fileManager = FileManager.default
-        let selection = selectionURL.standardizedFileURL
-        let candidates: [URL]
-
-        if selection.pathExtension.lowercased() == "app" {
-            candidates = [
-                selection.appendingPathComponent("Contents/Resources/codex"),
-                selection.appendingPathComponent("Contents/MacOS/codex"),
-            ]
-        } else if selection.hasDirectoryPath {
-            candidates = [
-                selection.appendingPathComponent("codex"),
-                selection.appendingPathComponent("Contents/Resources/codex"),
-                selection.appendingPathComponent("Contents/MacOS/codex"),
-            ]
-        } else {
-            candidates = [selection]
-        }
-
-        return candidates.first(where: { fileManager.isExecutableFile(atPath: $0.path) })
-    }
-
-    public static func containsCodexAuthentication(_ directoryURL: URL) -> Bool {
-        FileManager.default.isReadableFile(
-            atPath: directoryURL.appendingPathComponent("auth.json").path
-        )
-    }
-
     public func fetchSnapshot() throws -> UsageSnapshot {
         try fetchDashboardSnapshot().quota
     }
 
     public func fetchDashboardSnapshot() throws -> UsageDashboardSnapshot {
-        let securityScopedURLs = [securityScopedResourceURL, codexHomeURL].compactMap { $0 }
-        let startedSecurityScopes = securityScopedURLs.filter {
-            $0.startAccessingSecurityScopedResource()
-        }
-        defer {
-            for url in startedSecurityScopes {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
         let process = Process()
         let input = Pipe()
         let output = Pipe()
@@ -125,11 +74,6 @@ public struct CodexAppServerClient: Sendable {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = errors
-        if let codexHomeURL {
-            var environment = ProcessInfo.processInfo.environment
-            environment["CODEX_HOME"] = codexHomeURL.path
-            process.environment = environment
-        }
 
         try process.run()
         let timeoutWork = DispatchWorkItem {
@@ -157,7 +101,7 @@ public struct CodexAppServerClient: Sendable {
             "params": [
                 "clientInfo": [
                     "name": "codex_usage_alert",
-                    "title": "CoMex",
+                    "title": "Codex Usage Alert",
                     "version": "0.1.0",
                 ]
             ],

@@ -1,4 +1,4 @@
-# CoMex 文档库
+# Codex Usage Alert 文档库
 
 这里集中保存项目的产品、开发、发布和维护文档。项目根目录只保留 GitHub 首页需要直接展示的 `README.md`、许可证和工程文件。
 
@@ -6,10 +6,6 @@
 
 - [Mac App Store 开发计划](app-store-development-plan.md)：从可行性验证到 TestFlight、商店审核和发布维护的完整路线图。
 - [Mac App Store 上架资料](app-store-metadata.md)：价格、官网、支持页、隐私政策和待准备的商店字段。
-- [App Sandbox 可行性原型](sandbox-prototype.md)：用户授权 Codex 数据来源的技术验证和验收清单。
-- [双版本构建与代码管理](build-variants.md)：沙盒开发版与开源正常安装版的职责、构建和发布规则。
-- [版本号与更新记录规则](versioning.md)：版本号、Build、Git 提交次数和应用内更新记录的对应关系。
-- [用户使用说明](user-guide.txt)：随 DMG 一起提供的安装、使用、预警和排错说明。
 - [从零生成项目的开发提示词](development-prompt.md)：项目复盘、一次性总提示词、分阶段提示词和验收标准。
 
 ## 维护规则

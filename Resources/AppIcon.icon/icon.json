@@ -1,0 +1,38 @@
+{
+  "fill": {
+    "solid": "srgb:0.03529,0.08235,0.18431,1.00000"
+  },
+  "groups": [
+    {
+      "name": "Original brand artwork",
+      "layers": [
+        {
+          "image-name": "Brand.png",
+          "name": "Codex C",
+          "glass": false,
+          "position": {
+            "scale": 1.32,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "specular": false,
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}

@@ -25,7 +25,7 @@ struct CodexUsageAlertApp: App {
         WindowGroup("用量预警", id: "dashboard") {
             UsagePopover(monitor: monitor)
         }
-        .defaultSize(width: 380, height: 780)
+        .defaultSize(width: 380, height: 620)
         .windowResizability(.contentSize)
 
         MenuBarExtra {
@@ -153,68 +153,90 @@ private enum UsageService: String, CaseIterable, Identifiable {
     case codex = "口袋"
     case grok = "Grok Bot"
     var id: String { rawValue }
-    var tint: Color { self == .codex ? .cyan : Color(red: 0.75, green: 0.60, blue: 1) }
+    var tint: Color { self == .codex ? DashboardStyle.cyan : DashboardStyle.purple }
+}
+
+private enum DashboardStyle {
+    static let backgroundTop = Color(red: 0.055, green: 0.10, blue: 0.17)
+    static let backgroundBottom = Color(red: 0.035, green: 0.06, blue: 0.105)
+    static let surface = Color(red: 0.062, green: 0.108, blue: 0.18)
+    static let border = Color(red: 0.13, green: 0.20, blue: 0.29)
+    static let secondary = Color(red: 0.60, green: 0.67, blue: 0.75)
+    static let cyan = Color(red: 0.08, green: 0.77, blue: 0.83)
+    static let purple = Color(red: 0.55, green: 0.46, blue: 1)
+    static let selection = Color(red: 0.025, green: 0.57, blue: 0.69)
+    static let mint = Color(red: 0.19, green: 0.86, blue: 0.76)
 }
 
 private struct UsagePopover: View {
     @ObservedObject var monitor: UsageMonitor
     @State private var showingSettings = false
     @State private var selectedService: UsageService = .codex
+    @State private var showingTokenDetails = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var selectedPercent: Double? {
-        if selectedService == .codex {
-            return monitor.codexDataAvailable ? monitor.snapshot?.usedPercent : nil
-        }
-        return monitor.grokStatus == .ready ? monitor.grokSnapshot?.usedPercent : nil
+    private func percent(for service: UsageService) -> Double? {
+        service == .codex
+            ? (monitor.codexDataAvailable ? monitor.snapshot?.usedPercent : nil)
+            : (monitor.grokStatus == .ready ? monitor.grokSnapshot?.usedPercent : nil)
     }
-    private var selectedIncrease: Double {
-        selectedService == .codex ? monitor.dailyIncrease : monitor.grokDailyIncrease
+    private func enabled(_ service: UsageService) -> Bool {
+        service == .codex ? monitor.codexMonitoringEnabled : monitor.grokMonitoringEnabled
     }
-    private var selectedEnabled: Bool {
-        selectedService == .codex ? monitor.codexMonitoringEnabled : monitor.grokMonitoringEnabled
+    private func reset(for service: UsageService) -> Date? {
+        service == .codex ? monitor.snapshot?.resetsAt : monitor.grokSnapshot?.resetAt
+    }
+    private func increase(for service: UsageService) -> Double {
+        service == .codex ? monitor.dailyIncrease : monitor.grokDailyIncrease
+    }
+    private func state(for service: UsageService) -> String {
+        if !enabled(service) { return "监控已关闭" }
+        if service == .grok { return monitor.grokStatus.title }
+        return monitor.errorMessage == nil ? "等待更新" : "读取失败"
+    }
+    private var selectedPercent: Double? { percent(for: selectedService) }
+    private var selectedIncrease: Double { increase(for: selectedService) }
+    private var selectedEnabled: Bool { enabled(selectedService) }
+    private var attentionCount: Int {
+        UsageService.allCases.filter {
+            enabled($0) && (percent(for: $0) == nil || increase(for: $0) >= 5)
+        }.count
     }
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Color(red: 0.035, green: 0.075, blue: 0.16),
-                                    Color(red: 0.025, green: 0.045, blue: 0.10)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
-            ScrollView {
-                VStack(spacing: 12) {
+            LinearGradient(colors: [DashboardStyle.backgroundTop, DashboardStyle.backgroundBottom],
+                           startPoint: .top, endPoint: .bottom).ignoresSafeArea()
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 9) {
                     header
                     HStack(spacing: 10) {
                         serviceCard(.codex)
                         serviceCard(.grok)
                     }
-                    Picker("服务详情", selection: $selectedService) {
-                        ForEach(UsageService.allCases) { service in
-                            Text(service.rawValue).tag(service)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    HStack(spacing: 8) {
+                    servicePicker
+                    HStack(spacing: 7) {
                         MetricRow(icon: "arrow.up.right", label: "今日增加",
-                                  value: selectedPercent == nil ? "—" : "\(UsageMonitor.percent(selectedIncrease))%", tint: selectedService.tint)
-                        Spacer(minLength: 0)
-                        MetricRow(icon: "chart.pie.fill", label: "周期剩余",
-                                  value: selectedPercent.map { "\(UsageMonitor.percent(100 - $0))%" } ?? "—", tint: selectedService.tint)
-                        Spacer(minLength: 0)
+                                  value: selectedPercent == nil ? "—" : "\(UsageMonitor.percent(selectedIncrease))%", tint: .white)
+                        MetricRow(icon: "chart.pie", label: "周期剩余",
+                                  value: selectedPercent.map { "\(UsageMonitor.percent(100 - $0))%" } ?? "—", tint: .white)
                         MetricRow(icon: notificationIcon, label: "通知状态",
-                                  value: selectedEnabled ? notificationSummary : "监控已关", tint: .orange)
+                                  value: selectedEnabled ? notificationSummary : "监控已关", tint: .yellow)
                     }
                     if selectedPercent != nil {
-                        DailyBudgetCard(dailyIncrease: selectedIncrease, statusColor: selectedService.tint)
+                        DailyBudgetCard(dailyIncrease: selectedIncrease, statusColor: DashboardStyle.mint)
                     } else {
                         Text(selectedEnabled ? "等待有效数据后计算今日额度预算" : "此服务的监控已关闭，可在设置中开启")
-                            .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
-                            .frame(maxWidth: .infinity, minHeight: 70)
-                            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
+                            .font(.system(size: 11)).foregroundStyle(DashboardStyle.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 72)
+                            .background(DashboardStyle.surface, in: RoundedRectangle(cornerRadius: 13))
                     }
                     if selectedService == .codex {
                         if let tokenUsage = monitor.tokenUsage, selectedPercent != nil {
-                            TokenUsageCard(usage: tokenUsage, unitStyle: monitor.tokenUnitStyle)
+                            tokenSummary(tokenUsage)
+                            if showingTokenDetails {
+                                TokenUsageCard(usage: tokenUsage, unitStyle: monitor.tokenUnitStyle)
+                            }
                         } else {
                             TokenUsageUnavailableCard(isRefreshing: monitor.isRefreshing, errorMessage: monitor.tokenUsageErrorMessage)
                         }
@@ -238,7 +260,7 @@ private struct UsagePopover: View {
                     .transition(.opacity)
             }
         }
-        .frame(width: 380, height: min(780, (NSScreen.main?.visibleFrame.height ?? 860) - 80))
+        .frame(width: 380, height: min(620, (NSScreen.main?.visibleFrame.height ?? 860) - 80))
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showingSettings)
@@ -248,98 +270,162 @@ private struct UsagePopover: View {
         HStack(spacing: 10) {
             Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
                 .resizable().frame(width: 36, height: 36).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("用量预警").font(.system(size: 17, weight: .semibold))
-                Text(lastUpdatedText).font(.system(size: 10)).foregroundStyle(.white.opacity(0.65))
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("用量预警").font(.system(size: 17, weight: .bold))
+                    Spacer(minLength: 4)
+                    Label(attentionCount > 0 ? "\(attentionCount) 项注意" : monitor.overallStatus,
+                          systemImage: "circle.fill")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(statusColor.opacity(0.14), in: Capsule())
+                        .overlay(Capsule().stroke(statusColor.opacity(0.6), lineWidth: 1))
+                        .foregroundStyle(statusColor)
+                }
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    Text(lastUpdatedText(at: context.date))
+                        .font(.system(size: 10.5)).foregroundStyle(DashboardStyle.secondary)
+                }
             }
-            Spacer(minLength: 4)
-            Text(monitor.overallStatus)
-                .font(.system(size: 10.5, weight: .medium))
-                .padding(.horizontal, 9).padding(.vertical, 6)
-                .background(statusColor.opacity(0.15), in: Capsule())
-                .foregroundStyle(statusColor)
         }
+        .padding(.bottom, 5)
+    }
+
+    private var servicePicker: some View {
+        HStack(spacing: 0) {
+            ForEach(UsageService.allCases) { service in
+                Button { selectedService = service } label: {
+                    Text(service.rawValue)
+                        .font(.system(size: 13, weight: selectedService == service ? .semibold : .regular))
+                        .foregroundStyle(selectedService == service ? .white : DashboardStyle.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 29)
+                        .background(selectedService == service ? DashboardStyle.selection : .clear,
+                                    in: RoundedRectangle(cornerRadius: 9))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("查看\(service.rawValue)详情")
+                .accessibilityAddTraits(selectedService == service ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(DashboardStyle.surface, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("服务详情")
     }
 
     private func serviceCard(_ service: UsageService) -> some View {
-        let enabled = service == .codex ? monitor.codexMonitoringEnabled : monitor.grokMonitoringEnabled
-        let percent = service == .codex
-            ? (monitor.codexDataAvailable ? monitor.snapshot?.usedPercent : nil)
-            : (monitor.grokStatus == .ready ? monitor.grokSnapshot?.usedPercent : nil)
-        let reset = service == .codex ? monitor.snapshot?.resetsAt : monitor.grokSnapshot?.resetAt
-        let state = !enabled ? "监控已关闭" : service == .codex
-            ? (monitor.errorMessage == nil ? "连接中" : "读取失败") : monitor.grokStatus.title
+        let percent = percent(for: service)
+        let resetText = percent == nil ? state(for: service) : reset(for: service).map {
+            service == .codex
+                ? $0.formatted(.dateTime.month().day().hour(.twoDigits(amPM: .omitted)).minute()) + " 重置"
+                : $0.formatted(.dateTime.month().day()) + " 重置"
+        } ?? "重置时间未填写"
         return Button { selectedService = service } label: {
-            VStack(spacing: 8) {
-                HStack(spacing: 4) {
-                    Text(service.rawValue).font(.system(size: 12, weight: .semibold))
-                    Spacer()
-                    if selectedService == service {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(service.tint)
-                    }
-                }
+            HStack(spacing: 8) {
                 ZStack {
-                    Circle().stroke(Color.white.opacity(0.1), lineWidth: 7)
+                    Circle().stroke(DashboardStyle.border.opacity(0.7), lineWidth: 6)
                     Circle().trim(from: 0, to: (percent ?? 0) / 100)
-                        .stroke(service.tint, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                        .stroke(service.tint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                         .rotationEffect(.degrees(-90))
-                    VStack(spacing: 2) {
-                        Text(percent.map { "\(UsageMonitor.percent($0))%" } ?? "—")
-                            .font(.system(size: 23, weight: .bold, design: .rounded)).monospacedDigit()
-                        Text(percent == nil ? state : "本周期已用").font(.system(size: 9))
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                }.frame(width: 88, height: 88).padding(.vertical, 3)
-                Text(percent != nil ? reset.map { "重置 \($0.formatted(.dateTime.month().day().hour().minute()))" } ?? "重置时间未填写" : state)
-                    .font(.system(size: 9.5)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                    Text(percent.map { "\(UsageMonitor.percent($0))%" } ?? "—")
+                        .font(.system(size: 15, weight: .bold)).monospacedDigit()
+                        .minimumScaleFactor(0.8).lineLimit(1)
+                        .padding(.horizontal, 2)
+                }.frame(width: 51, height: 51)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(service.rawValue).font(.system(size: 13, weight: .bold)).lineLimit(1)
+                    Text(percent == nil ? state(for: service) : "本周期已用")
+                        .font(.system(size: 10)).foregroundStyle(DashboardStyle.secondary)
+                    Label(resetText, systemImage: "arrow.clockwise")
+                        .font(.system(size: 9.5)).foregroundStyle(DashboardStyle.cyan)
+                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(12).frame(maxWidth: .infinity)
-            .background(service.tint.opacity(selectedService == service ? 0.10 : 0.035), in: RoundedRectangle(cornerRadius: 13))
-            .overlay(RoundedRectangle(cornerRadius: 13).stroke(selectedService == service ? service.tint.opacity(0.65) : Color.white.opacity(0.1), lineWidth: 1))
+            .padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 78)
+            .background(DashboardStyle.surface, in: RoundedRectangle(cornerRadius: 13))
+            .overlay(RoundedRectangle(cornerRadius: 13).stroke(
+                selectedService == service ? DashboardStyle.cyan : DashboardStyle.border, lineWidth: 1))
             .contentShape(RoundedRectangle(cornerRadius: 13))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(service.rawValue)，\(percent.map { "已用 \(UsageMonitor.percent($0))%" } ?? state)")
+        .accessibilityLabel("\(service.rawValue)，\(percent.map { "已用 \(UsageMonitor.percent($0))%" } ?? state(for: service))，\(resetText)")
         .accessibilityAddTraits(selectedService == service ? .isSelected : [])
     }
 
+    private func tokenSummary(_ usage: AccountTokenUsage) -> some View {
+        let today = usage.dailyUsageBuckets.first { $0.startDate == UsageMonitor.dayKey(for: Date()) }
+        let todayText = today.map { TokenCountFormatter.compact($0.tokens, style: monitor.tokenUnitStyle) } ?? "待更新"
+        return Button { showingTokenDetails.toggle() } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Label("Token 使用量", systemImage: "number").font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Image(systemName: showingTokenDetails ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9)).foregroundStyle(DashboardStyle.secondary)
+                }
+                Text("今日 \(todayText) · 本月 \(TokenCountFormatter.compact(usage.monthToDateTokens(), style: monitor.tokenUnitStyle))")
+                    .font(.system(size: 10.5)).foregroundStyle(DashboardStyle.secondary)
+            }
+            .padding(13).frame(maxWidth: .infinity, alignment: .leading)
+            .background(DashboardStyle.surface, in: RoundedRectangle(cornerRadius: 13))
+            .overlay(RoundedRectangle(cornerRadius: 13).stroke(DashboardStyle.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help(showingTokenDetails ? "收起 Token 趋势详情" : "展开 Token 趋势详情；本月统计与额度周期独立")
+        .accessibilityValue(showingTokenDetails ? "已展开" : "已收起")
+    }
+
     private var grokUsageCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("任务 / 消息用量", systemImage: "bubble.left.and.bubble.right.fill")
-                .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(UsageService.grok.tint)
-            HStack {
-                TokenMetric(value: selectedPercent != nil ? monitor.grokSnapshot.map { "\($0.tasksToday)" } ?? "—" : "—", label: "今日次数", exactValue: nil)
-                Divider()
-                TokenMetric(value: selectedPercent != nil ? monitor.grokSnapshot.map { "\($0.tasksPeriod)" } ?? "—" : "—", label: "本周期次数", exactValue: nil)
-            }.frame(height: 35)
-            Text(selectedPercent != nil ? (monitor.grokSnapshot?.plan ?? "本地记录") : "在设置中手动填写，或接入本地 JSON 文件。")
-                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.7)).lineLimit(2)
-            if let updated = monitor.grokSnapshot?.updatedAt {
-                Text("数据时间 \(updated.formatted(.dateTime.month().day().hour().minute()))")
-                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.7))
+        VStack(alignment: .leading, spacing: 5) {
+            Label("任务 / 消息用量", systemImage: "diamond.fill")
+                .font(.system(size: 13, weight: .semibold))
+            if selectedPercent != nil, let usage = monitor.grokSnapshot {
+                Text("今日 \(usage.tasksToday) 次 · 本周期 \(usage.tasksPeriod) 次")
+                    .font(.system(size: 10.5)).foregroundStyle(DashboardStyle.secondary)
+            } else {
+                Text("在设置中手动填写，或接入本地 JSON 文件。")
+                    .font(.system(size: 10.5)).foregroundStyle(DashboardStyle.secondary)
             }
         }.padding(13).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
+            .background(DashboardStyle.surface, in: RoundedRectangle(cornerRadius: 13))
+            .overlay(RoundedRectangle(cornerRadius: 13).stroke(DashboardStyle.border, lineWidth: 1))
+            .help(monitor.grokSnapshot.map { "套餐：\($0.plan)；数据时间：\($0.updatedAt.formatted())" } ?? "等待本地用量记录")
     }
 
     private var sharedAlerts: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label("用量预警", systemImage: "bell.badge").font(.system(size: 12, weight: .semibold))
-            Text("两项服务独立计量 · 5 / 10 / 15 / 20 分级提醒")
-                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.7))
-            if monitor.codexMonitoringEnabled, let error = monitor.errorMessage {
-                Text("口袋：\(error)").font(.system(size: 10)).foregroundStyle(.orange).lineLimit(3).help(error)
-            }
-            if monitor.grokMonitoringEnabled, monitor.grokStatus != .ready {
-                Text("Grok Bot：\(monitor.grokStatus.title) · 请更新本地文件或手动填写")
-                    .font(.system(size: 10)).foregroundStyle(.orange)
-            }
-            if monitor.overallLevel != .normal {
-                Text("\(monitor.overallLevel.title)：请留意今日用量")
-                    .font(.system(size: 10)).foregroundStyle(statusColor)
-            }
-        }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
+        VStack(spacing: 7) {
+            serviceAlert(.codex)
+            serviceAlert(.grok)
+        }
+    }
+
+    private func serviceAlert(_ service: UsageService) -> some View {
+        let needsAttention = enabled(service) && (percent(for: service) == nil || increase(for: service) >= 5)
+        let tint: Color = !enabled(service) ? DashboardStyle.secondary : needsAttention ? .orange : DashboardStyle.mint
+        return Label(alertText(for: service), systemImage: !enabled(service) ? "pause.circle" : needsAttention ? "exclamationmark.triangle.fill" : "checkmark")
+            .font(.system(size: 10.5))
+            .foregroundStyle(needsAttention ? .white : tint)
+            .padding(.horizontal, 11).padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.35), lineWidth: 1))
+            .help(service == .codex ? monitor.errorMessage ?? "按今日增加的 5 / 10 / 15 / 20 个百分点独立提醒" : "读取本地 JSON；超过 24 小时的数据不参与预警")
+    }
+
+    private func alertText(for service: UsageService) -> String {
+        let name = service.rawValue
+        guard enabled(service) else { return "\(name) 监控已关闭，可在设置中开启" }
+        guard let used = percent(for: service) else {
+            return "\(name)：\(state(for: service)) · \(service == .codex ? "请刷新或检查登录状态" : "请更新文件或手动填写")"
+        }
+        if increase(for: service) >= 5 {
+            return "\(name) 本周期已用 \(UsageMonitor.percent(used))%，今日增加 \(UsageMonitor.percent(increase(for: service)))%"
+        }
+        guard let date = reset(for: service) else { return "\(name) 用量正常" }
+        let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()),
+                                                   to: Calendar.current.startOfDay(for: date)).day ?? 0
+        if date <= Date() { return "\(name) 已到重置时间，等待用量更新" }
+        return days > 0 ? "\(name) 用量正常，距重置还有 \(days) 天" : "\(name) 用量正常，今天重置"
     }
 
     private var controls: some View {
@@ -359,9 +445,7 @@ private struct UsagePopover: View {
                     .frame(maxWidth: .infinity)
                     .foregroundStyle(.white)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color(red: 0.00, green: 0.58, blue: 0.72))
-                .controlSize(.large)
+                .buttonStyle(DashboardActionStyle(fill: DashboardStyle.selection))
                 .disabled(monitor.isRefreshing)
 
                 Button {
@@ -371,9 +455,7 @@ private struct UsagePopover: View {
                         .frame(maxWidth: .infinity)
                         .foregroundStyle(.white.opacity(0.9))
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.white.opacity(0.12))
-                .controlSize(.large)
+                .buttonStyle(DashboardActionStyle(fill: Color(red: 0.22, green: 0.25, blue: 0.29)))
             }
 
             HStack {
@@ -417,17 +499,17 @@ private struct UsagePopover: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("口袋：本机 Codex CLI · Grok Bot：本地 JSON / 手动填写")
+            Text("口袋：本机 codex app-server · Grok Bot：本地 JSON / 手动填写")
             HStack {
-                Text(monitor.refreshSummary)
-                Spacer()
                 Text("V\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")")
+                Spacer()
+                Text(monitor.refreshSummary)
             }
-        }.font(.system(size: 9.5)).foregroundStyle(.white.opacity(0.65))
+        }.font(.system(size: 9.5)).foregroundStyle(DashboardStyle.secondary)
     }
 
     private var statusColor: Color {
-        if monitor.overallLevel == .normal && monitor.overallStatus != "一切正常" { return .orange }
+        if attentionCount > 0 && monitor.overallLevel == .normal { return .orange }
         switch monitor.overallLevel {
         case .normal: return Color(red: 0.15, green: 0.88, blue: 0.78)
         case .notice: return .yellow
@@ -436,9 +518,14 @@ private struct UsagePopover: View {
         }
     }
 
-    private var lastUpdatedText: String {
-        if monitor.isRefreshing { return "正在刷新用量…" }
-        return "口袋 + Grok Bot · 双服务监控"
+    private func lastUpdatedText(at now: Date) -> String {
+        if monitor.isRefreshing { return "监控 口袋 + Grok Bot · 正在刷新…" }
+        let dates = [monitor.codexDataAvailable ? monitor.snapshot?.fetchedAt : nil,
+                     monitor.grokStatus == .ready ? monitor.grokSnapshot?.updatedAt : nil].compactMap { $0 }
+        guard let date = dates.max() else { return "监控 口袋 + Grok Bot · 等待数据" }
+        let minutes = max(0, Int(now.timeIntervalSince(date) / 60))
+        let age = minutes == 0 ? "刚刚更新" : minutes < 60 ? "\(minutes) 分钟前更新" : "\(minutes / 60) 小时前更新"
+        return "监控 口袋 + Grok Bot · \(age)"
     }
 
     private var notificationSummary: String {
@@ -447,7 +534,7 @@ private struct UsagePopover: View {
             return "未允许"
         }
         switch monitor.notificationStatus {
-        case "已允许", "已发送": return "已开启"
+        case "已允许", "已发送": return "已允许"
         case "未允许": return "未允许"
         default: return monitor.notificationStatus.count > 8 ? "需检查" : monitor.notificationStatus
         }
@@ -638,6 +725,20 @@ private struct RefreshSettingsView: View {
     }
 }
 
+private struct DashboardActionStyle: ButtonStyle {
+    let fill: Color
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .medium))
+            .frame(minHeight: 34)
+            .background(fill, in: RoundedRectangle(cornerRadius: 13))
+            .opacity(!isEnabled ? 0.55 : configuration.isPressed ? 0.75 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: 13))
+    }
+}
+
 private struct MetricRow: View {
     let icon: String
     let label: String
@@ -645,76 +746,61 @@ private struct MetricRow: View {
     let tint: Color
 
     var body: some View {
-        HStack(spacing: 9) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 26, height: 26)
-                .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 7))
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(value)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                    .foregroundStyle(.white)
-                Text(label)
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.white.opacity(0.65))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: icon).foregroundStyle(tint).accessibilityHidden(true)
+                Text(value).monospacedDigit()
             }
+            .font(.system(size: 16, weight: .semibold))
+            .lineLimit(1).minimumScaleFactor(0.8)
+            Text(label).font(.system(size: 10)).foregroundStyle(DashboardStyle.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10).padding(.vertical, 10)
+        .background(DashboardStyle.surface, in: RoundedRectangle(cornerRadius: 13))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label)，\(value)")
     }
 }
 
 private struct DailyBudgetCard: View {
     let dailyIncrease: Double
     let statusColor: Color
-
     private let cap = 20.0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("今日额度预算")
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text("按自然日累计，最高 20 个百分点")
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.white.opacity(0.65))
-                }
+                Text("今日额度预算").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Text("\(UsageMonitor.percent(dailyIncrease)) / 20%")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .font(.system(size: 14, weight: .semibold)).monospacedDigit()
                     .foregroundStyle(statusColor)
             }
-
-            GeometryReader { geometry in
-                let inset: CGFloat = 20
-                let width = max(0, geometry.size.width - inset * 2)
-                ZStack(alignment: .topLeading) {
-                    Capsule().fill(Color.white.opacity(0.075))
-                        .frame(width: width, height: 8).offset(x: inset)
-                    Capsule().fill(statusColor)
-                        .frame(width: width * min(max(dailyIncrease / cap, 0), 1), height: 8)
-                        .offset(x: inset)
-                    ForEach([5, 10, 15, 20], id: \.self) { threshold in
-                        let x = inset + width * CGFloat(threshold) / CGFloat(cap)
-                        Circle()
-                            .fill(dailyIncrease >= Double(threshold) ? statusColor : Color.white.opacity(0.35))
-                            .frame(width: 5, height: 5)
-                            .position(x: x, y: 4)
-                        Text([5: "5 注意", 10: "10 提醒", 15: "15 偏高", 20: "20 上限"][threshold] ?? "")
-                            .font(.system(size: 9.5, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.65))
-                            .fixedSize()
-                            .position(x: x, y: 23)
+            VStack(spacing: 5) {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(DashboardStyle.border)
+                        Capsule().fill(LinearGradient(colors: [DashboardStyle.cyan, statusColor],
+                                                      startPoint: .leading, endPoint: .trailing))
+                            .frame(width: geometry.size.width * min(max(dailyIncrease / cap, 0), 1))
                     }
-                }
-            }.frame(height: 31)
+                }.frame(height: 6)
+                HStack {
+                    Text("5 注意")
+                    Spacer()
+                    Text("10 提醒")
+                    Spacer()
+                    Text("15 偏高")
+                    Spacer()
+                    Text("20 上限")
+                }.font(.system(size: 9)).foregroundStyle(DashboardStyle.secondary)
+            }
         }
         .padding(13)
-        .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
-        .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.white.opacity(0.065), lineWidth: 1))
+        .background(DashboardStyle.surface, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).stroke(DashboardStyle.border, lineWidth: 1))
+        .help("按自然日累计今日增加的额度百分点，最高 20 个百分点；标注为四档预警级别。")
     }
 }
 

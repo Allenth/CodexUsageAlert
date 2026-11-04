@@ -9,6 +9,19 @@
 
 ## 进行中版本
 
+### 2026-11-04 14:00:15 CST (UTC+08:00) — 按双服务设计图校准界面并覆盖安装
+
+- 版本：`0.3.0`（Build `30`），由 `scripts/sync_version.sh` 同步并与安装包核对。
+- 完成内容：将两张指定原图移入 `docs/design-v2/`，校准横向双环卡片、全宽服务切换、独立指标、绿色预算条、紧凑用量摘要、双服务状态、刷新按钮与页脚；显示最近更新时间和需注意服务数量。保留口袋（Codex）、Grok Bot 和应用名称。Token 图表可展开查看，月度统计明确标为“本月”。
+- 主要文件：`Sources/CodexUsageAlert/CodexUsageAlertApp.swift`、`Resources/Info.plist`、`docs/design-v2/`、`docs/usage-v2-ui.md`、`CHANGELOG.md`、本日志。
+- 验证：最终 `swift build && swift test` 通过，19 项 XCTest 零失败；`scripts/build_app.sh` Release 打包通过；安装包 `codesign --verify --deep --strict`、源／安装包 plist 校验、可执行文件一致性比较及 `git diff --check` 通过。原生主窗口和菜单栏面板视觉检查双服务状态、切换、加载态、Token 展开／收起与设置入口；本机截图保留于被忽略的 `.impeccable/review/`。
+- Grok 数据：安装后实际界面显示 `42.8%`、`11月10日 重置`，详情为剩余 `57.2%`、今日／本周期均 `0` 次；读取标准 Application Support 目录中的 `grok-usage.json`，修改前后 SHA-256 一致，未替换为设计示例数据。
+- 安装：旧安装可恢复备份位于被忽略的 `archive-dist/pre-design-v2/`；覆盖安装 `/Applications/Codex Usage Alert.app` 并重启，实读版本 `0.3.0 / 30`。
+- 发布检查：71 个跟踪及未忽略文件的常见密钥、凭据、个人主目录路径和敏感文件名规则扫描无命中；两张新 PNG 无文本／EXIF 元数据。数据 JSON、本机截图与应用备份均未纳入提交。以普通快进推送发布到 `Allenth/CodexUsageAlert` 的 `main`，推送结果以远端提交为准。
+- 限制：本机系统通知仍为“未允许”，未验证通知横幅送达、VoiceOver 朗读或其他 macOS 版本。原图的示例预测文字以真实用量／重置状态替代；未对未提供的周期 Token 数据作推算。
+- 分支：`release/usage-v2`；目标远端分支：`main`。
+- 提交：pending commit。
+
 ### 2026-11-04 13:47:27 CST (UTC+08:00) — 双服务用量监控与本机安装
 
 - 版本：`0.2.9`（Build `29`）。

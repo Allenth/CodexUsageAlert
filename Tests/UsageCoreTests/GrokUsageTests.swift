@@ -41,8 +41,8 @@ final class GrokUsageTests: XCTestCase {
     }
 
     func testFreshnessBoundaryAndFutureTimestamp() {
-        XCTAssertEqual(sample(updatedAt: now.addingTimeInterval(-86_400)).status(at: now), .ready)
-        XCTAssertEqual(sample(updatedAt: now.addingTimeInterval(-86_401)).status(at: now), .stale)
+        XCTAssertEqual(sample(updatedAt: now.addingTimeInterval(-7_200)).status(at: now), .ready)
+        XCTAssertEqual(sample(updatedAt: now.addingTimeInterval(-7_201)).status(at: now), .stale)
         XCTAssertEqual(sample(updatedAt: now.addingTimeInterval(301)).status(at: now), .invalid)
     }
 
@@ -55,10 +55,55 @@ final class GrokUsageTests: XCTestCase {
         let result = GrokUsageFile.read(from: file, now: now)
         XCTAssertEqual(result.status, .ready)
         XCTAssertEqual(result.snapshot, sample())
-        XCTAssertEqual(GrokUsageFile.read(from: file, now: now.addingTimeInterval(86_401)).status, .stale)
+        XCTAssertEqual(GrokUsageFile.read(from: file, now: now.addingTimeInterval(7_201)).status, .stale)
         try Data("malformed".utf8).write(to: file)
         XCTAssertEqual(GrokUsageFile.read(from: file, now: now).status, .invalid)
         XCTAssertThrowsError(try GrokUsageFile.write(sample(101), to: file, now: now))
+    }
+
+    func testWallClockReadSlotsAndDayRollover() throws {
+        let formatter = ISO8601DateFormatter()
+        for (input, expected) in [
+            ("2026-11-04T10:05:00Z", "2026-11-04T10:20:00Z"),
+            ("2026-11-04T10:19:59Z", "2026-11-04T10:20:00Z"),
+            ("2026-11-04T10:20:00Z", "2026-11-04T10:50:00Z"),
+            ("2026-11-04T10:35:00Z", "2026-11-04T10:50:00Z"),
+            ("2026-11-04T10:50:00Z", "2026-11-04T11:20:00Z"),
+            ("2026-11-04T23:59:59Z", "2026-11-05T00:20:00Z"),
+        ] {
+            XCTAssertEqual(GrokUsageReadSchedule.nextRead(
+                after: try XCTUnwrap(formatter.date(from: input)), calendar: calendar),
+                formatter.date(from: expected), input)
+        }
+    }
+
+    func testReadScheduleUsesLocalTimeAndReanchorsAfterMissedSlots() throws {
+        var local = calendar
+        local.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Kathmandu"))
+        let formatter = ISO8601DateFormatter()
+        // A fractional-hour offset distinguishes local minutes from UTC minutes.
+        for (input, expected) in [
+            ("2026-11-04T10:05:00+05:45", "2026-11-04T10:20:00+05:45"),
+            ("2026-11-04T13:42:17+05:45", "2026-11-04T13:50:00+05:45"),
+        ] {
+            XCTAssertEqual(GrokUsageReadSchedule.nextRead(
+                after: try XCTUnwrap(formatter.date(from: input)), calendar: local),
+                formatter.date(from: expected))
+        }
+    }
+
+    func testReadScheduleAcrossDaylightSavingTransitions() throws {
+        var local = calendar
+        local.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let formatter = ISO8601DateFormatter()
+        for (input, expected) in [
+            ("2026-03-08T01:50:00-08:00", "2026-03-08T03:20:00-07:00"),
+            ("2026-11-01T01:50:00-07:00", "2026-11-01T01:20:00-08:00"),
+        ] {
+            XCTAssertEqual(GrokUsageReadSchedule.nextRead(
+                after: try XCTUnwrap(formatter.date(from: input)), calendar: local),
+                formatter.date(from: expected))
+        }
     }
 
     func testThresholdsAreIndependentPersistedAndCoalescible() throws {

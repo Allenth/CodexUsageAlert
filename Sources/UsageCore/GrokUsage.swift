@@ -40,7 +40,17 @@ public struct GrokUsageSnapshot: Codable, Equatable, Sendable {
         guard service == "grok-bot", usedPercent.isFinite, (0...100).contains(usedPercent),
               tasksToday >= 0, tasksPeriod >= 0,
               updatedAt.timeIntervalSince(now) <= 300 else { return .invalid }
-        return now.timeIntervalSince(updatedAt) > 86_400 ? .stale : .ready
+        return now.timeIntervalSince(updatedAt) > 2 * 60 * 60 ? .stale : .ready
+    }
+}
+
+public enum GrokUsageReadSchedule {
+    /// Recompute from local wall time after each read, wake, or clock change.
+    public static func nextRead(after now: Date, calendar: Calendar = .current) -> Date? {
+        [20, 50].compactMap { minute in
+            calendar.nextDate(after: now, matching: DateComponents(minute: minute, second: 0),
+                              matchingPolicy: .nextTime)
+        }.min()
     }
 }
 

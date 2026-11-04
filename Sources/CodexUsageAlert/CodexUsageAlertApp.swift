@@ -428,12 +428,21 @@ struct UsagePopover: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Codex：本机 codex app-server · Grok Bot：本地 JSON / 手动填写")
+            Text(grokUpdatedText)
             HStack {
                 Text("V\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")")
                 Spacer()
                 Text(monitor.refreshSummary)
             }
         }.font(.system(size: 9.5)).foregroundStyle(DashboardStyle.secondary)
+    }
+
+    private var grokUpdatedText: String {
+        guard let date = monitor.grokSnapshot?.updatedAt else { return "Grok Bot 数据更新于 —" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return "Grok Bot 数据更新于 \(formatter.string(from: date))"
     }
 
     private var statusColor: Color {

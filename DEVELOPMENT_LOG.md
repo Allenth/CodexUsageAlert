@@ -9,6 +9,16 @@
 
 ## 进行中版本
 
+### 2026-11-04 14:40:55 CST (UTC+08:00) — Grok Bot 按挂钟时间读取
+
+- 版本：`0.3.2`（Build `32`），由 `scripts/sync_version.sh` 同步，源 plist 与安装包一致。
+- 完成内容：Grok Bot 自动读取改为本机时间每小时 `:20`、`:50`；启动、手动刷新及睡眠唤醒后立即读取，唤醒或系统时间／时区变化后重新对齐。拆开 Codex 自动刷新路径，每分钟只检查缓存时效。过期阈值调整为 2 小时，页脚显示文件 `updatedAt` 对应的 `HH:mm`。
+- 主要文件：`Sources/CodexUsageAlert/UsageMonitor.swift`、`CodexUsageAlertApp.swift`、`Sources/UsageCore/GrokUsage.swift`、`Tests/UsageCoreTests/GrokUsageTests.swift`、`docs/grok-usage-format.md`、README、版本及日志文件。
+- 验证：`swift build && swift test` 通过，26 项 XCTest 零失败；覆盖固定读取时刻、跨日、非整小时时区、错过时刻后的重新对齐、夏令时及 2 小时过期边界。Release 打包、安装前后 `codesign --verify --deep --strict`、plist 校验、可执行文件一致性比较与 `git diff --check` 均通过。
+- 安装与界面：旧安装备份到被忽略的 `archive-dist/pre-readtime/`，覆盖 `/Applications/Codex Usage Alert.app` 并启动新进程。主窗口显示 `V0.3.2` 和“Grok Bot 数据更新于 14:33”；点击“立即刷新”可触发刷新，滚动后完整页脚布局正常。本机 Grok JSON 未修改。
+- 验证范围：唤醒通知接线和自动读取入口已检查；没有让用户电脑实际睡眠或修改系统时间，也未等待真实 `:20`／`:50` 时刻，时刻计算由自动测试验证。
+- 分支：`main`；提交：pending commit。
+
 ### 2026-11-04 14:35:05 CST (UTC+08:00) — 统一 Codex 服务名称与双服务菜单栏
 
 - 版本：`0.3.1`（Build `31`），由 `scripts/sync_version.sh` 同步，源 plist 与最终安装包一致。

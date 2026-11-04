@@ -62,6 +62,9 @@ final class UsageMonitor: ObservableObject {
     private let defaults = UserDefaults.standard
     private var timer: Timer?
     private var grokTimer: Timer?
+    private var freshnessTimer: Timer?
+    private var wakeObserver: NSObjectProtocol?
+    private var clockObservers: [NSObjectProtocol] = []
     private var codexTracker = DailyUsageTracker()
     private var grokTracker = DailyUsageTracker()
 
@@ -96,10 +99,36 @@ final class UsageMonitor: ObservableObject {
         requestNotificationPermission()
         refresh()
         scheduleNextRefresh()
-        // Check local file freshness even with a daily Codex schedule.
-        grokTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshGrok() }
+        scheduleNextGrokRead()
+        // Refresh availability from cached timestamps without reading the file.
+        freshnessTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.updateCachedFreshness() }
         }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshGrok()
+                self?.scheduleNextGrokRead()
+            }
+        }
+        clockObservers = [Notification.Name.NSSystemClockDidChange,
+                          Notification.Name.NSSystemTimeZoneDidChange].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    self?.updateCachedFreshness()
+                    self?.scheduleNextGrokRead()
+                }
+            }
+        }
+    }
+
+    deinit {
+        timer?.invalidate()
+        grokTimer?.invalidate()
+        freshnessTimer?.invalidate()
+        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
+        clockObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     var codexDataAvailable: Bool {
@@ -239,6 +268,10 @@ final class UsageMonitor: ObservableObject {
 
     func refresh() {
         refreshGrok()
+        refreshCodex()
+    }
+
+    private func refreshCodex() {
         guard codexMonitoringEnabled, !isRefreshing else { return }
         isRefreshing = true
         errorMessage = nil
@@ -295,7 +328,7 @@ final class UsageMonitor: ObservableObject {
 
         if let interval = refreshSchedule.interval {
             timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-                Task { @MainActor in self?.refresh() }
+                Task { @MainActor in self?.refreshCodex() }
             }
             return
         }
@@ -313,10 +346,31 @@ final class UsageMonitor: ObservableObject {
             repeats: false
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.refresh()
+                self?.refreshCodex()
                 self?.scheduleNextRefresh()
             }
         }
+    }
+
+    private func scheduleNextGrokRead() {
+        grokTimer?.invalidate()
+        guard let nextDate = GrokUsageReadSchedule.nextRead(after: Date()) else { return }
+        let nextTimer = Timer(fire: nextDate, interval: 0, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshGrok()
+                self?.scheduleNextGrokRead()
+            }
+        }
+        grokTimer = nextTimer
+        RunLoop.main.add(nextTimer, forMode: .common)
+    }
+
+    private func updateCachedFreshness() {
+        let now = Date()
+        menuUpdatedAt = now
+        guard grokMonitoringEnabled, let grokSnapshot else { return }
+        grokStatus = grokSnapshot.status(at: now)
+        if grokStatus != .ready { grokDailyIncrease = 0 }
     }
 
     private func accept(_ newSnapshot: UsageSnapshot) {

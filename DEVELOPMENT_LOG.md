@@ -9,10 +9,22 @@
 
 ## 进行中版本
 
+### 2026-11-04 14:35:05 CST (UTC+08:00) — 统一 Codex 服务名称与双服务菜单栏
+
+- 版本：`0.3.1`（Build `31`），由 `scripts/sync_version.sh` 同步，源 plist 与最终安装包一致。
+- 完成内容：先统一界面、通知及文档中的 Codex 服务名称，保持 Grok Bot 不变；再新增默认 C / G 双进度条、双服务数字与最高值三种菜单栏模式。悬停提示分别显示已用和剩余，关闭、过期、读取失败及无效数据不显示旧比例；每分钟重新检查时效。选择持久化保存。
+- 主要文件：`Sources/CodexUsageAlert/CodexUsageAlertApp.swift`、`UsageMonitor.swift`、`MenuBarUsageController.swift`、`Sources/UsageCore/MenuBarUsage.swift`、`Tests/UsageCoreTests/MenuBarUsageTests.swift`、`Resources/Info.plist`、README、服务及界面说明、更新日志和本日志。
+- 验证：最终 `swift build && swift test` 通过，23 项 XCTest 零失败；Release 打包、安装包 `codesign --verify --deep --strict`、源／安装包 plist 校验及可执行文件一致性比较通过。源码及最终安装 App bundle 的旧服务名称 `grep -R -a -l` 均返回 1（零匹配）。`git diff --check` 通过。
+- 界面验证：安装版主窗口和菜单栏弹出面板的 Codex 文案正确；三种设置选项可选择、保存，最高值模式跨重启保留，数字模式重新打开设置后保留；交付时已恢复双进度条。源绘制器在浅／深色背景与 1×／2× 下检查正常和灰色禁用状态，预览仅留在被忽略的 `.impeccable/review/menubar-render/`，不是屏幕截图。
+- 安装：备份旧安装到被忽略的 `archive-dist/pre-menubar/`，覆盖 `/Applications/Codex Usage Alert.app` 并重启；实际版本 `0.3.1 / 31`。
+- 发布检查：74 个跟踪及未忽略文件的常见密钥、凭据、个人主目录路径及敏感文件名规则扫描零命中；本机用量数据、预览与备份未纳入提交。目标为 `Allenth/CodexUsageAlert` 的 `main`，使用普通推送，结果以远端提交核对为准。
+- 限制：区域和整屏 `screencapture` 分别返回 `could not create image from rect`、`could not create image from display`，原生工具仅提供应用窗口／弹出面板截图，未能生成任务指定的 `~/agent-tools/menubar.png`。未实机验证系统深浅模式切换、悬停提示弹出和 VoiceOver 朗读；绘制检查不等同于这些实机验证。
+- 分支：`main`；提交：pending commit。
+
 ### 2026-11-04 14:00:15 CST (UTC+08:00) — 按双服务设计图校准界面并覆盖安装
 
 - 版本：`0.3.0`（Build `30`），由 `scripts/sync_version.sh` 同步并与安装包核对。
-- 完成内容：将两张指定原图移入 `docs/design-v2/`，校准横向双环卡片、全宽服务切换、独立指标、绿色预算条、紧凑用量摘要、双服务状态、刷新按钮与页脚；显示最近更新时间和需注意服务数量。保留口袋（Codex）、Grok Bot 和应用名称。Token 图表可展开查看，月度统计明确标为“本月”。
+- 完成内容：将两张指定原图移入 `docs/design-v2/`，校准横向双环卡片、全宽服务切换、独立指标、绿色预算条、紧凑用量摘要、双服务状态、刷新按钮与页脚；显示最近更新时间和需注意服务数量。保留 Codex、Grok Bot 和应用名称。Token 图表可展开查看，月度统计明确标为“本月”。
 - 主要文件：`Sources/CodexUsageAlert/CodexUsageAlertApp.swift`、`Resources/Info.plist`、`docs/design-v2/`、`docs/usage-v2-ui.md`、`CHANGELOG.md`、本日志。
 - 验证：最终 `swift build && swift test` 通过，19 项 XCTest 零失败；`scripts/build_app.sh` Release 打包通过；安装包 `codesign --verify --deep --strict`、源／安装包 plist 校验、可执行文件一致性比较及 `git diff --check` 通过。原生主窗口和菜单栏面板视觉检查双服务状态、切换、加载态、Token 展开／收起与设置入口；本机截图保留于被忽略的 `.impeccable/review/`。
 - Grok 数据：安装后实际界面显示 `42.8%`、`11月10日 重置`，详情为剩余 `57.2%`、今日／本周期均 `0` 次；读取标准 Application Support 目录中的 `grok-usage.json`，修改前后 SHA-256 一致，未替换为设计示例数据。
@@ -25,9 +37,9 @@
 ### 2026-11-04 13:47:27 CST (UTC+08:00) — 双服务用量监控与本机安装
 
 - 版本：`0.2.9`（Build `29`）。
-- 完成内容：标题改为“用量预警”，新增口袋与 Grok Bot 双环卡片、详情切换、共用预警及来源页脚；菜单栏取已开启且有效服务的最高百分比。Grok Bot 读取本地 JSON，提供手动百分比／重置时间填写与独立监控开关；缺失、无效、超过 24 小时数据均安全显示状态。独立记录每日 5/10/15/20 阈值，跨重启和周期重置去重，迁移旧版口袋基线。
+- 完成内容：标题改为“用量预警”，新增 Codex 与 Grok Bot 双环卡片、详情切换、共用预警及来源页脚；菜单栏取已开启且有效服务的最高百分比。Grok Bot 读取本地 JSON，提供手动百分比／重置时间填写与独立监控开关；缺失、无效、超过 24 小时数据均安全显示状态。独立记录每日 5/10/15/20 阈值，跨重启和周期重置去重，迁移旧版 Codex 基线。
 - 主要文件：`Sources/CodexUsageAlert/`、`Sources/UsageCore/GrokUsage.swift`、`Tests/UsageCoreTests/GrokUsageTests.swift`、`Resources/Info.plist`、`scripts/build_app.sh`、`README.md`、`docs/grok-usage-format.md`、`docs/usage-v2-ui.md`、`.gitignore`、更新日志；清理合并说明与旧日志中的本机路径。
-- 验证：最终 `swift build && swift test` 通过，19 项 XCTest 零失败；`scripts/build_app.sh` Release 打包通过，安装包 `codesign --verify --deep --strict`、plist 校验、Shell 语法检查和 `git diff --check` 通过。实际界面验证口袋真实额度／Token、服务切换、Grok 未接入／18% 手动记录／过期状态、越界 101 拒绝、独立关闭与重启持久化；测试文件与 Grok 基线已恢复。原生截图复核后修正预算刻度，修复复核结果 ship。未将规则测试等同于系统通知展示。
+- 验证：最终 `swift build && swift test` 通过，19 项 XCTest 零失败；`scripts/build_app.sh` Release 打包通过，安装包 `codesign --verify --deep --strict`、plist 校验、Shell 语法检查和 `git diff --check` 通过。实际界面验证 Codex 真实额度／Token、服务切换、Grok 未接入／18% 手动记录／过期状态、越界 101 拒绝、独立关闭与重启持久化；测试文件与 Grok 基线已恢复。原生截图复核后修正预算刻度，修复复核结果 ship。未将规则测试等同于系统通知展示。
 - 安装：原进程从旧源码的打包目录运行，标准应用目录没有旧安装。退出原进程后安装并启动 `/Applications/Codex Usage Alert.app`，实读版本 0.2.9 / 29；原源码和历史包未删除。
 - 发布准备：MIT LICENSE 已确认；现有公开远端为 `Allenth/CodexUsageAlert`（账号显示名称 `Kingway_Meng`），默认分支 `main`。在独立发布分支保留已发布历史、重建尚未发布的合并提交以去除本机路径，不强推。基础历史 207 个唯一文件对象和最终工作树 69 个文件的常见密钥／凭据／个人路径扫描无命中，未跟踪 `archive-dist/` 或 legacy 安装包。推送结果以远端提交为准。
 - 限制：任务指定的两张设计图不在工作区，按文字布局与现有深色样式实现，未做原稿像素比对；当前 macOS 通知权限为“未允许”，未验证通知横幅送达。Grok 需要外部更新或手动填写，本次不包含自动采集器。

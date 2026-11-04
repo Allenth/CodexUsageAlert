@@ -4,17 +4,18 @@
   <img src="Resources/AppIcon.png" width="128" alt="Codex Usage Alert icon">
 </p>
 
-一个原生 macOS 菜单栏用量监控器，同时监控口袋（Codex）和 Grok Bot。口袋通过本机 `codex app-server` 读取额度与 Token 活动；Grok Bot 读取本地 JSON 文件，也可在设置中手动填写。两项服务分别记录当日增量，并发送分级系统通知。
+一个原生 macOS 菜单栏用量监控器，同时监控 Codex 和 Grok Bot。Codex 通过本机 `codex app-server` 读取额度与 Token 活动；Grok Bot 读取本地 JSON 文件，也可在设置中手动填写。两项服务分别记录当日增量，并发送分级系统通知。
 
 > 本项目是独立的开源工具，不是 OpenAI 官方产品。应用不会要求或保存你的账号密码、Cookie 或 API Key。
 
 ## 功能
 
-- 双环形卡片显示口袋与 Grok Bot 的周期用量和重置时间，可切换详情
-- 菜单栏显示已开启且数据有效的服务中的最高已用百分比
+- 双环形卡片显示 Codex 与 Grok Bot 的周期用量和重置时间，可切换详情
+- 菜单栏默认以 C / G 两条小进度条同时显示 Codex 和 Grok Bot；填充表示已用，空白表示剩余，悬停查看精确比例
+- 设置可切换双进度条、双服务数字或最高值；关闭、过期或无效的服务置灰，不显示旧比例
 - 设置可分别开关两项服务；Grok Bot 支持手动填写百分比与重置时间
 - Grok Bot 文件缺失、无效或超过 24 小时未更新时显示状态，不参与通知或最高值计算
-- 菜单栏使用 16pt 专用无阴影矢量图标
+- 菜单栏使用随系统深浅背景适配的模板矢量图形，支持高分屏
 - 点击应用图标打开完整仪表盘，同时保留菜单栏入口
 - 自动刷新频率可设置，默认 15 分钟；也可选择固定时间刷新
 - 显示已用额度、剩余额度、额度周期和重置时间
@@ -30,8 +31,8 @@
 
 - macOS 13 或更高版本
 - Swift 6 工具链
-- 监控口袋时：本机已安装 Codex CLI 或 ChatGPT/Codex macOS 应用
-- 监控口袋时：已使用支持 Codex 服务的 ChatGPT 身份登录
+- 监控 Codex 时：本机已安装 Codex CLI 或 ChatGPT/Codex macOS 应用
+- 监控 Codex 时：已使用支持 Codex 服务的 ChatGPT 身份登录
 - 仅监控 Grok Bot 时无需安装或登录 Codex
 
 ## Grok Bot 接入

@@ -49,6 +49,8 @@ final class UsageMonitor: ObservableObject {
     @Published private(set) var refreshSchedule: RefreshSchedule
     @Published private(set) var dailyRefreshTime: Date
     @Published private(set) var tokenUnitStyle: TokenUnitStyle
+    @Published private(set) var menuBarDisplayStyle: MenuBarDisplayStyle
+    @Published private(set) var menuUpdatedAt = Date()
 
     @Published private(set) var codexMonitoringEnabled: Bool
     @Published private(set) var grokMonitoringEnabled: Bool
@@ -65,6 +67,7 @@ final class UsageMonitor: ObservableObject {
 
     init() {
         let defaults = UserDefaults.standard
+        menuBarDisplayStyle = MenuBarDisplayStyle(savedValue: defaults.string(forKey: "menuBarDisplayStyle"))
         codexMonitoringEnabled = defaults.object(forKey: "codexMonitoringEnabled") as? Bool ?? true
         grokMonitoringEnabled = defaults.object(forKey: "grokMonitoringEnabled") as? Bool ?? true
         if let data = defaults.data(forKey: "codexDailyTracker"),
@@ -120,14 +123,26 @@ final class UsageMonitor: ObservableObject {
     var overallStatus: String {
         if !codexMonitoringEnabled && !grokMonitoringEnabled { return "监控已关闭" }
         if overallLevel != .normal { return overallLevel.title }
-        if codexMonitoringEnabled && !codexDataAvailable { return "口袋待更新" }
+        if codexMonitoringEnabled && !codexDataAvailable { return "Codex 待更新" }
         if grokMonitoringEnabled && grokStatus != .ready { return "Grok Bot \(grokStatus.title)" }
         return "一切正常"
     }
 
-    var menuTitle: String {
-        guard let value = maximumUsedPercent else { return "—" }
-        return "\(Int(value.rounded()))%"
+    var menuServices: [MenuBarServiceUsage] {
+        let now = Date()
+        return [
+            MenuBarServiceUsage(name: "Codex", label: "C", enabled: codexMonitoringEnabled,
+                usedPercent: snapshot?.usedPercent, updatedAt: snapshot?.fetchedAt,
+                unavailableReason: errorMessage == nil ? nil : "读取失败", now: now),
+            MenuBarServiceUsage(name: "Grok Bot", label: "G", enabled: grokMonitoringEnabled,
+                usedPercent: grokSnapshot?.usedPercent, updatedAt: grokSnapshot?.updatedAt,
+                unavailableReason: grokStatus == .ready ? nil : grokStatus.title, now: now),
+        ]
+    }
+
+    func setMenuBarDisplayStyle(_ style: MenuBarDisplayStyle) {
+        menuBarDisplayStyle = style
+        defaults.set(style.rawValue, forKey: "menuBarDisplayStyle")
     }
 
     var level: UsageAlertLevel {
@@ -200,6 +215,7 @@ final class UsageMonitor: ObservableObject {
     }
 
     func refreshGrok() {
+        menuUpdatedAt = Date()
         guard grokMonitoringEnabled else {
             grokStatus = .disabled
             grokErrorMessage = nil
@@ -309,7 +325,7 @@ final class UsageMonitor: ObservableObject {
                                           resetAt: newSnapshot.resetsAt, at: newSnapshot.fetchedAt)
         dailyIncrease = codexTracker.increase
         defaults.set(try? JSONEncoder().encode(codexTracker), forKey: "codexDailyTracker")
-        notify(service: "codex", name: "口袋", increase: dailyIncrease,
+        notify(service: "codex", name: "Codex", increase: dailyIncrease,
                usedPercent: newSnapshot.usedPercent, crossed: crossed)
     }
 

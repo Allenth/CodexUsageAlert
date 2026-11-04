@@ -28,85 +28,13 @@ struct CodexUsageAlertApp: App {
         .defaultSize(width: 380, height: 620)
         .windowResizability(.contentSize)
 
-        MenuBarExtra {
-            UsagePopover(monitor: monitor)
-        } label: {
-            HStack(spacing: 4) {
-                Image(nsImage: MenuBarIcon.image)
-                    .frame(width: 16, height: 16)
-                Text(monitor.menuTitle)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("用量预警，\(monitor.menuTitle)")
-        }
-        .menuBarExtraStyle(.window)
     }
 }
 
-private enum MenuBarIcon {
-    static let image: NSImage = {
-        let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { _ in
-            NSGraphicsContext.saveGraphicsState()
-            defer { NSGraphicsContext.restoreGraphicsState() }
-
-            if let context = NSGraphicsContext.current?.cgContext,
-               let gradient = CGGradient(
-                   colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                   colors: [
-                       NSColor(
-                           calibratedRed: 0.12,
-                           green: 0.92,
-                           blue: 0.90,
-                           alpha: 1
-                       ).cgColor,
-                       NSColor(
-                           calibratedRed: 0.08,
-                           green: 0.48,
-                           blue: 1.00,
-                           alpha: 1
-                       ).cgColor,
-                   ] as CFArray,
-                   locations: [0, 1]
-               ) {
-                context.setLineWidth(2.2)
-                context.setLineCap(.round)
-                context.addArc(
-                    center: CGPoint(x: 7.7, y: 7.7),
-                    radius: 5.4,
-                    startAngle: 42 * .pi / 180,
-                    endAngle: 318 * .pi / 180,
-                    clockwise: false
-                )
-                context.replacePathWithStrokedPath()
-                context.clip()
-                context.drawLinearGradient(
-                    gradient,
-                    start: CGPoint(x: 2, y: 3),
-                    end: CGPoint(x: 13, y: 13),
-                    options: []
-                )
-            }
-
-            NSColor(
-                calibratedRed: 1.00,
-                green: 0.66,
-                blue: 0.12,
-                alpha: 1
-            ).setFill()
-            NSBezierPath(
-                ovalIn: NSRect(x: 11.8, y: 11.8, width: 2.2, height: 2.2)
-            )
-            .fill()
-            return true
-        }
-        image.isTemplate = false
-        return image
-    }()
-}
-
 private final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var menuBarController: MenuBarUsageController?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        menuBarController = MenuBarUsageController(monitor: .shared)
         DispatchQueue.main.async {
             self.showDashboard(NSApplication.shared)
         }
@@ -150,7 +78,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 private enum UsageService: String, CaseIterable, Identifiable {
-    case codex = "口袋"
+    case codex = "Codex"
     case grok = "Grok Bot"
     var id: String { rawValue }
     var tint: Color { self == .codex ? DashboardStyle.cyan : DashboardStyle.purple }
@@ -168,7 +96,7 @@ private enum DashboardStyle {
     static let mint = Color(red: 0.19, green: 0.86, blue: 0.76)
 }
 
-private struct UsagePopover: View {
+struct UsagePopover: View {
     @ObservedObject var monitor: UsageMonitor
     @State private var showingSettings = false
     @State private var selectedService: UsageService = .codex
@@ -499,7 +427,7 @@ private struct UsagePopover: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("口袋：本机 codex app-server · Grok Bot：本地 JSON / 手动填写")
+            Text("Codex：本机 codex app-server · Grok Bot：本地 JSON / 手动填写")
             HStack {
                 Text("V\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")")
                 Spacer()
@@ -519,13 +447,13 @@ private struct UsagePopover: View {
     }
 
     private func lastUpdatedText(at now: Date) -> String {
-        if monitor.isRefreshing { return "监控 口袋 + Grok Bot · 正在刷新…" }
+        if monitor.isRefreshing { return "监控 Codex + Grok Bot · 正在刷新…" }
         let dates = [monitor.codexDataAvailable ? monitor.snapshot?.fetchedAt : nil,
                      monitor.grokStatus == .ready ? monitor.grokSnapshot?.updatedAt : nil].compactMap { $0 }
-        guard let date = dates.max() else { return "监控 口袋 + Grok Bot · 等待数据" }
+        guard let date = dates.max() else { return "监控 Codex + Grok Bot · 等待数据" }
         let minutes = max(0, Int(now.timeIntervalSince(date) / 60))
         let age = minutes == 0 ? "刚刚更新" : minutes < 60 ? "\(minutes) 分钟前更新" : "\(minutes / 60) 小时前更新"
-        return "监控 口袋 + Grok Bot · \(age)"
+        return "监控 Codex + Grok Bot · \(age)"
     }
 
     private var notificationSummary: String {
@@ -552,6 +480,7 @@ private struct RefreshSettingsView: View {
     @State private var selectedSchedule: RefreshSchedule
     @State private var selectedDailyRefreshTime: Date
     @State private var selectedTokenUnitStyle: TokenUnitStyle
+    @State private var selectedMenuBarStyle: MenuBarDisplayStyle
     @State private var codexEnabled: Bool
     @State private var grokEnabled: Bool
     @State private var manualPercent = ""
@@ -565,6 +494,7 @@ private struct RefreshSettingsView: View {
         _selectedSchedule = State(initialValue: monitor.refreshSchedule)
         _selectedDailyRefreshTime = State(initialValue: monitor.dailyRefreshTime)
         _selectedTokenUnitStyle = State(initialValue: monitor.tokenUnitStyle)
+        _selectedMenuBarStyle = State(initialValue: monitor.menuBarDisplayStyle)
         _codexEnabled = State(initialValue: monitor.codexMonitoringEnabled)
         _grokEnabled = State(initialValue: monitor.grokMonitoringEnabled)
         _manualResetAt = State(initialValue: monitor.grokSnapshot?.resetAt ?? Date())
@@ -588,7 +518,7 @@ private struct RefreshSettingsView: View {
                         Text("监控与通知设置")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white)
-                        Text("独立管理口袋与 Grok Bot 的用量提醒")
+                        Text("独立管理 Codex 与 Grok Bot 的用量提醒")
                             .font(.system(size: 10))
                             .foregroundStyle(.white.opacity(0.65))
                     }
@@ -606,9 +536,18 @@ private struct RefreshSettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Toggle("监控口袋（Codex）", isOn: $codexEnabled)
+                    Toggle("监控 Codex", isOn: $codexEnabled)
                     Toggle("监控 Grok Bot", isOn: $grokEnabled)
                 }.toggleStyle(.switch).tint(.cyan).font(.system(size: 12))
+
+                Picker("菜单栏显示", selection: $selectedMenuBarStyle) {
+                    ForEach(MenuBarDisplayStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
+                .pickerStyle(.menu)
+                .font(.system(size: 12))
+                .help("C 代表 Codex，G 代表 Grok Bot；悬停菜单栏可查看已用和剩余比例。")
 
                 VStack(alignment: .leading, spacing: 7) {
                     Text("Grok Bot 手动填写已用百分比").font(.system(size: 12, weight: .medium))
@@ -715,6 +654,7 @@ private struct RefreshSettingsView: View {
     }
 
     private func saveAndClose() {
+        monitor.setMenuBarDisplayStyle(selectedMenuBarStyle)
         monitor.setMonitoring(codex: codexEnabled, grok: grokEnabled)
         monitor.applySettings(
             refreshSchedule: selectedSchedule,

@@ -22,10 +22,10 @@ struct CodexUsageAlertApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("Codex 用量预警", id: "dashboard") {
+        WindowGroup("用量预警", id: "dashboard") {
             UsagePopover(monitor: monitor)
         }
-        .defaultSize(width: 380, height: 750)
+        .defaultSize(width: 380, height: 780)
         .windowResizability(.contentSize)
 
         MenuBarExtra {
@@ -38,7 +38,7 @@ struct CodexUsageAlertApp: App {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Codex 用量预警，\(monitor.menuTitle)")
+            .accessibilityLabel("用量预警，\(monitor.menuTitle)")
         }
         .menuBarExtraStyle(.window)
     }
@@ -149,170 +149,197 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+private enum UsageService: String, CaseIterable, Identifiable {
+    case codex = "口袋"
+    case grok = "Grok Bot"
+    var id: String { rawValue }
+    var tint: Color { self == .codex ? .cyan : Color(red: 0.75, green: 0.60, blue: 1) }
+}
+
 private struct UsagePopover: View {
     @ObservedObject var monitor: UsageMonitor
     @State private var showingSettings = false
+    @State private var selectedService: UsageService = .codex
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var selectedPercent: Double? {
+        if selectedService == .codex {
+            return monitor.codexDataAvailable ? monitor.snapshot?.usedPercent : nil
+        }
+        return monitor.grokStatus == .ready ? monitor.grokSnapshot?.usedPercent : nil
+    }
+    private var selectedIncrease: Double {
+        selectedService == .codex ? monitor.dailyIncrease : monitor.grokDailyIncrease
+    }
+    private var selectedEnabled: Bool {
+        selectedService == .codex ? monitor.codexMonitoringEnabled : monitor.grokMonitoringEnabled
+    }
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.035, green: 0.075, blue: 0.16),
-                    Color(red: 0.025, green: 0.045, blue: 0.10),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            Circle()
-                .fill(Color.cyan.opacity(0.08))
-                .frame(width: 230, height: 230)
-                .blur(radius: 55)
-                .offset(x: -150, y: -240)
-
-            VStack(spacing: 16) {
-                header
-
-                HStack(spacing: 24) {
-                    UsageGauge(
-                        usedPercent: monitor.snapshot?.usedPercent ?? 0,
-                        color: statusColor,
-                        isRefreshing: monitor.isRefreshing
-                    )
-
-                    VStack(alignment: .leading, spacing: 13) {
-                        MetricRow(
-                            icon: "arrow.up.right",
-                            label: "今日增加",
-                            value: "\(UsageMonitor.percent(monitor.dailyIncrease))%",
-                            tint: statusColor
-                        )
-                        MetricRow(
-                            icon: "chart.pie.fill",
-                            label: "周期剩余",
-                            value: "\(UsageMonitor.percent(monitor.snapshot?.remainingPercent ?? 100))%",
-                            tint: .cyan
-                        )
-                        MetricRow(
-                            icon: notificationIcon,
-                            label: "通知状态",
-                            value: notificationSummary,
-                            tint: .orange
-                        )
+            LinearGradient(colors: [Color(red: 0.035, green: 0.075, blue: 0.16),
+                                    Color(red: 0.025, green: 0.045, blue: 0.10)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 12) {
+                    header
+                    HStack(spacing: 10) {
+                        serviceCard(.codex)
+                        serviceCard(.grok)
                     }
-                }
-
-                DailyBudgetCard(
-                    dailyIncrease: monitor.dailyIncrease,
-                    statusColor: statusColor
-                )
-
-                if let tokenUsage = monitor.tokenUsage {
-                    TokenUsageCard(
-                        usage: tokenUsage,
-                        unitStyle: monitor.tokenUnitStyle
-                    )
-                } else {
-                    TokenUsageUnavailableCard(
-                        isRefreshing: monitor.isRefreshing,
-                        errorMessage: monitor.tokenUsageErrorMessage
-                    )
-                }
-
-                if let snapshot = monitor.snapshot {
-                    HStack(spacing: 9) {
-                        StatTile(
-                            icon: "calendar.badge.clock",
-                            value: snapshot.resetsAt.formatted(.dateTime.month().day()),
-                            detail: snapshot.resetsAt.formatted(.dateTime.hour().minute()),
-                            label: "下次重置"
-                        )
-                        StatTile(
-                            icon: "clock.arrow.circlepath",
-                            value: "\(UsageMonitor.percent(snapshot.windowDays)) 天",
-                            detail: "滚动额度",
-                            label: "额度周期"
-                        )
-                        StatTile(
-                            icon: "bell.badge.fill",
-                            value: "5 · 10 · 15",
-                            detail: "20% 为上限",
-                            label: "预警刻度"
-                        )
+                    Picker("服务详情", selection: $selectedService) {
+                        ForEach(UsageService.allCases) { service in
+                            Text(service.rawValue).tag(service)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    HStack(spacing: 8) {
+                        MetricRow(icon: "arrow.up.right", label: "今日增加",
+                                  value: selectedPercent == nil ? "—" : "\(UsageMonitor.percent(selectedIncrease))%", tint: selectedService.tint)
+                        Spacer(minLength: 0)
+                        MetricRow(icon: "chart.pie.fill", label: "周期剩余",
+                                  value: selectedPercent.map { "\(UsageMonitor.percent(100 - $0))%" } ?? "—", tint: selectedService.tint)
+                        Spacer(minLength: 0)
+                        MetricRow(icon: notificationIcon, label: "通知状态",
+                                  value: selectedEnabled ? notificationSummary : "监控已关", tint: .orange)
+                    }
+                    if selectedPercent != nil {
+                        DailyBudgetCard(dailyIncrease: selectedIncrease, statusColor: selectedService.tint)
+                    } else {
+                        Text(selectedEnabled ? "等待有效数据后计算今日额度预算" : "此服务的监控已关闭，可在设置中开启")
+                            .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
+                            .frame(maxWidth: .infinity, minHeight: 70)
+                            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
+                    }
+                    if selectedService == .codex {
+                        if let tokenUsage = monitor.tokenUsage, selectedPercent != nil {
+                            TokenUsageCard(usage: tokenUsage, unitStyle: monitor.tokenUnitStyle)
+                        } else {
+                            TokenUsageUnavailableCard(isRefreshing: monitor.isRefreshing, errorMessage: monitor.tokenUsageErrorMessage)
+                        }
+                    } else {
+                        grokUsageCard
+                    }
+                    sharedAlerts
+                    controls
+                    footer
                 }
-
-                if let error = monitor.errorMessage {
-                    ErrorBanner(message: error)
-                }
-
-                controls
-
-                footer
+                .padding(18)
             }
             .foregroundStyle(.white)
-            .frame(width: 344)
-            .padding(18)
-
+            .accessibilityHidden(showingSettings)
             if showingSettings {
-                Color.black.opacity(0.48)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture { }
-
-                RefreshSettingsView(monitor: monitor) {
-                    showingSettings = false
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.45), radius: 18, y: 8)
-                .padding(.horizontal, 20)
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                Color.black.opacity(0.6).ignoresSafeArea()
+                RefreshSettingsView(monitor: monitor) { showingSettings = false }
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.16), lineWidth: 1))
+                    .padding(.horizontal, 20)
+                    .transition(.opacity)
             }
         }
-        .frame(width: 380)
+        .frame(width: 380, height: min(780, (NSScreen.main?.visibleFrame.height ?? 860) - 80))
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
-        .animation(.easeOut(duration: 0.16), value: showingSettings)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showingSettings)
     }
 
     private var header: some View {
-        HStack(spacing: 11) {
+        HStack(spacing: 10) {
             Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 42, height: 42)
-                .shadow(color: .cyan.opacity(0.2), radius: 8, y: 3)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Codex 用量预警")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text(lastUpdatedText)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.white.opacity(0.52))
+                .resizable().frame(width: 36, height: 36).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("用量预警").font(.system(size: 17, weight: .semibold))
+                Text(lastUpdatedText).font(.system(size: 10)).foregroundStyle(.white.opacity(0.65))
             }
-
-            Spacer()
-
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 6, height: 6)
-                    .shadow(color: statusColor.opacity(0.75), radius: 4)
-                Text(monitor.level.title)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(statusColor.opacity(0.12), in: Capsule())
-            .overlay(Capsule().stroke(statusColor.opacity(0.25), lineWidth: 1))
+            Spacer(minLength: 4)
+            Text(monitor.overallStatus)
+                .font(.system(size: 10.5, weight: .medium))
+                .padding(.horizontal, 9).padding(.vertical, 6)
+                .background(statusColor.opacity(0.15), in: Capsule())
+                .foregroundStyle(statusColor)
         }
+    }
+
+    private func serviceCard(_ service: UsageService) -> some View {
+        let enabled = service == .codex ? monitor.codexMonitoringEnabled : monitor.grokMonitoringEnabled
+        let percent = service == .codex
+            ? (monitor.codexDataAvailable ? monitor.snapshot?.usedPercent : nil)
+            : (monitor.grokStatus == .ready ? monitor.grokSnapshot?.usedPercent : nil)
+        let reset = service == .codex ? monitor.snapshot?.resetsAt : monitor.grokSnapshot?.resetAt
+        let state = !enabled ? "监控已关闭" : service == .codex
+            ? (monitor.errorMessage == nil ? "连接中" : "读取失败") : monitor.grokStatus.title
+        return Button { selectedService = service } label: {
+            VStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Text(service.rawValue).font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                    if selectedService == service {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(service.tint)
+                    }
+                }
+                ZStack {
+                    Circle().stroke(Color.white.opacity(0.1), lineWidth: 7)
+                    Circle().trim(from: 0, to: (percent ?? 0) / 100)
+                        .stroke(service.tint, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    VStack(spacing: 2) {
+                        Text(percent.map { "\(UsageMonitor.percent($0))%" } ?? "—")
+                            .font(.system(size: 23, weight: .bold, design: .rounded)).monospacedDigit()
+                        Text(percent == nil ? state : "本周期已用").font(.system(size: 9))
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                }.frame(width: 88, height: 88).padding(.vertical, 3)
+                Text(percent != nil ? reset.map { "重置 \($0.formatted(.dateTime.month().day().hour().minute()))" } ?? "重置时间未填写" : state)
+                    .font(.system(size: 9.5)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+            }
+            .padding(12).frame(maxWidth: .infinity)
+            .background(service.tint.opacity(selectedService == service ? 0.10 : 0.035), in: RoundedRectangle(cornerRadius: 13))
+            .overlay(RoundedRectangle(cornerRadius: 13).stroke(selectedService == service ? service.tint.opacity(0.65) : Color.white.opacity(0.1), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 13))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(service.rawValue)，\(percent.map { "已用 \(UsageMonitor.percent($0))%" } ?? state)")
+        .accessibilityAddTraits(selectedService == service ? .isSelected : [])
+    }
+
+    private var grokUsageCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("任务 / 消息用量", systemImage: "bubble.left.and.bubble.right.fill")
+                .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(UsageService.grok.tint)
+            HStack {
+                TokenMetric(value: selectedPercent != nil ? monitor.grokSnapshot.map { "\($0.tasksToday)" } ?? "—" : "—", label: "今日次数", exactValue: nil)
+                Divider()
+                TokenMetric(value: selectedPercent != nil ? monitor.grokSnapshot.map { "\($0.tasksPeriod)" } ?? "—" : "—", label: "本周期次数", exactValue: nil)
+            }.frame(height: 35)
+            Text(selectedPercent != nil ? (monitor.grokSnapshot?.plan ?? "本地记录") : "在设置中手动填写，或接入本地 JSON 文件。")
+                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.7)).lineLimit(2)
+            if let updated = monitor.grokSnapshot?.updatedAt {
+                Text("数据时间 \(updated.formatted(.dateTime.month().day().hour().minute()))")
+                    .font(.system(size: 10)).foregroundStyle(.white.opacity(0.7))
+            }
+        }.padding(13).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    private var sharedAlerts: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label("用量预警", systemImage: "bell.badge").font(.system(size: 12, weight: .semibold))
+            Text("两项服务独立计量 · 5 / 10 / 15 / 20 分级提醒")
+                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.7))
+            if monitor.codexMonitoringEnabled, let error = monitor.errorMessage {
+                Text("口袋：\(error)").font(.system(size: 10)).foregroundStyle(.orange).lineLimit(3).help(error)
+            }
+            if monitor.grokMonitoringEnabled, monitor.grokStatus != .ready {
+                Text("Grok Bot：\(monitor.grokStatus.title) · 请更新本地文件或手动填写")
+                    .font(.system(size: 10)).foregroundStyle(.orange)
+            }
+            if monitor.overallLevel != .normal {
+                Text("\(monitor.overallLevel.title)：请留意今日用量")
+                    .font(.system(size: 10)).foregroundStyle(statusColor)
+            }
+        }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
     }
 
     private var controls: some View {
@@ -371,7 +398,8 @@ private struct UsagePopover: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white.opacity(0.62))
-                .help("刷新与通知设置")
+                .help("监控与通知设置")
+                .accessibilityLabel("监控与通知设置")
 
                 Button {
                     NSApplication.shared.terminate(nil)
@@ -381,34 +409,36 @@ private struct UsagePopover: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.white.opacity(0.62))
                 .help("退出应用")
+                .accessibilityLabel("退出应用")
             }
             .padding(.horizontal, 3)
         }
     }
 
     private var footer: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "lock.shield.fill")
-            Text("数据仅从本机 Codex CLI 读取")
-            Spacer()
-            Text(monitor.refreshSummary)
-        }
-        .font(.system(size: 9.5))
-        .foregroundStyle(.white.opacity(0.38))
+        VStack(alignment: .leading, spacing: 4) {
+            Text("口袋：本机 Codex CLI · Grok Bot：本地 JSON / 手动填写")
+            HStack {
+                Text(monitor.refreshSummary)
+                Spacer()
+                Text("V\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")")
+            }
+        }.font(.system(size: 9.5)).foregroundStyle(.white.opacity(0.65))
     }
 
     private var statusColor: Color {
-        switch monitor.level {
+        if monitor.overallLevel == .normal && monitor.overallStatus != "一切正常" { return .orange }
+        switch monitor.overallLevel {
         case .normal: return Color(red: 0.15, green: 0.88, blue: 0.78)
-        case .notice: return Color(red: 1.00, green: 0.78, blue: 0.22)
-        case .reminder: return Color(red: 1.00, green: 0.55, blue: 0.15)
-        case .high, .cap: return Color(red: 1.00, green: 0.30, blue: 0.32)
+        case .notice: return .yellow
+        case .reminder: return .orange
+        case .high, .cap: return Color(red: 1, green: 0.40, blue: 0.42)
         }
     }
 
     private var lastUpdatedText: String {
-        guard let date = monitor.snapshot?.fetchedAt else { return "正在连接本机 Codex…" }
-        return "更新于 \(date.formatted(.dateTime.hour().minute()))"
+        if monitor.isRefreshing { return "正在刷新用量…" }
+        return "口袋 + Grok Bot · 双服务监控"
     }
 
     private var notificationSummary: String {
@@ -435,6 +465,12 @@ private struct RefreshSettingsView: View {
     @State private var selectedSchedule: RefreshSchedule
     @State private var selectedDailyRefreshTime: Date
     @State private var selectedTokenUnitStyle: TokenUnitStyle
+    @State private var codexEnabled: Bool
+    @State private var grokEnabled: Bool
+    @State private var manualPercent = ""
+    @State private var manualResetAt: Date
+    @State private var manualError: String?
+    @State private var manualSaved = false
 
     init(monitor: UsageMonitor, onDone: @escaping () -> Void) {
         self.monitor = monitor
@@ -442,6 +478,9 @@ private struct RefreshSettingsView: View {
         _selectedSchedule = State(initialValue: monitor.refreshSchedule)
         _selectedDailyRefreshTime = State(initialValue: monitor.dailyRefreshTime)
         _selectedTokenUnitStyle = State(initialValue: monitor.tokenUnitStyle)
+        _codexEnabled = State(initialValue: monitor.codexMonitoringEnabled)
+        _grokEnabled = State(initialValue: monitor.grokMonitoringEnabled)
+        _manualResetAt = State(initialValue: monitor.grokSnapshot?.resetAt ?? Date())
     }
 
     var body: some View {
@@ -459,12 +498,12 @@ private struct RefreshSettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("自动刷新设置")
+                        Text("监控与通知设置")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white)
-                        Text("默认每 15 分钟，也可改为每天固定时间")
+                        Text("独立管理口袋与 Grok Bot 的用量提醒")
                             .font(.system(size: 10))
-                            .foregroundStyle(.white.opacity(0.48))
+                            .foregroundStyle(.white.opacity(0.65))
                     }
                     Spacer()
                     Button {
@@ -479,6 +518,30 @@ private struct RefreshSettingsView: View {
                         .keyboardShortcut(.defaultAction)
                 }
 
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("监控口袋（Codex）", isOn: $codexEnabled)
+                    Toggle("监控 Grok Bot", isOn: $grokEnabled)
+                }.toggleStyle(.switch).tint(.cyan).font(.system(size: 12))
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Grok Bot 手动填写已用百分比").font(.system(size: 12, weight: .medium))
+                    HStack {
+                        TextField("0–100", text: $manualPercent)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Grok Bot 已用百分比")
+                            .onChange(of: manualPercent) { _ in manualSaved = false; manualError = nil }
+                        Text("%")
+                        Button("保存数值") { saveManual() }
+                    }
+                    DatePicker("周期重置时间", selection: $manualResetAt)
+                        .font(.system(size: 11))
+                    Text(manualSaved ? "已保存，数据有效期 24 小时" : "写入本地文件；首次记录作为今日基线。")
+                        .font(.system(size: 10)).foregroundStyle(manualSaved ? .green : .white.opacity(0.7))
+                    if let manualError {
+                        Text(manualError).font(.system(size: 10)).foregroundStyle(.orange)
+                    }
+                }
+                Divider()
                 Picker(
                     "刷新频率",
                     selection: $selectedSchedule
@@ -550,62 +613,28 @@ private struct RefreshSettingsView: View {
         .environment(\.colorScheme, .dark)
     }
 
+    private func saveManual() {
+        guard let percent = Double(manualPercent), percent.isFinite, (0...100).contains(percent) else {
+            manualError = "请输入 0 到 100 之间的数字"
+            return
+        }
+        do {
+            try monitor.saveManualGrokUsage(percent: percent, resetAt: manualResetAt)
+            manualError = nil
+            manualSaved = true
+        } catch {
+            manualError = "保存失败：\(error.localizedDescription)"
+        }
+    }
+
     private func saveAndClose() {
+        monitor.setMonitoring(codex: codexEnabled, grok: grokEnabled)
         monitor.applySettings(
             refreshSchedule: selectedSchedule,
             dailyRefreshTime: selectedDailyRefreshTime,
             tokenUnitStyle: selectedTokenUnitStyle
         )
         onDone()
-    }
-}
-
-private struct UsageGauge: View {
-    let usedPercent: Double
-    let color: Color
-    let isRefreshing: Bool
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.white.opacity(0.07), lineWidth: 13)
-
-            Circle()
-                .trim(from: 0, to: max(0.012, min(usedPercent / 100, 1)))
-                .stroke(
-                    AngularGradient(
-                        colors: [.cyan, Color(red: 0.14, green: 0.68, blue: 1.0), color],
-                        center: .center,
-                        startAngle: .degrees(-90),
-                        endAngle: .degrees(270)
-                    ),
-                    style: StrokeStyle(lineWidth: 13, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .shadow(color: color.opacity(0.42), radius: 7)
-                .animation(.easeOut(duration: 0.5), value: usedPercent)
-
-            VStack(spacing: 0) {
-                HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text(UsageMonitor.percent(usedPercent))
-                        .font(.system(size: 31, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                    Text("%")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.62))
-                }
-                Text("本周期已用")
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.48))
-            }
-
-            if isRefreshing {
-                Circle()
-                    .stroke(Color.white.opacity(0.10), lineWidth: 2)
-                    .frame(width: 84, height: 84)
-            }
-        }
-        .frame(width: 126, height: 126)
     }
 }
 
@@ -630,7 +659,7 @@ private struct MetricRow: View {
                     .foregroundStyle(.white)
                 Text(label)
                     .font(.system(size: 9.5))
-                    .foregroundStyle(.white.opacity(0.44))
+                    .foregroundStyle(.white.opacity(0.65))
             }
         }
     }
@@ -651,7 +680,7 @@ private struct DailyBudgetCard: View {
                         .foregroundStyle(.white)
                     Text("按自然日累计，最高 20 个百分点")
                         .font(.system(size: 9.5))
-                        .foregroundStyle(.white.opacity(0.42))
+                        .foregroundStyle(.white.opacity(0.65))
                 }
                 Spacer()
                 Text("\(UsageMonitor.percent(dailyIncrease)) / 20%")
@@ -660,52 +689,28 @@ private struct DailyBudgetCard: View {
             }
 
             GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.075))
-                        .frame(height: 8)
-
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [.cyan, statusColor],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(
-                            width: geometry.size.width * min(max(dailyIncrease / cap, 0), 1),
-                            height: 8
-                        )
-                        .shadow(color: statusColor.opacity(0.38), radius: 5)
-
+                let inset: CGFloat = 20
+                let width = max(0, geometry.size.width - inset * 2)
+                ZStack(alignment: .topLeading) {
+                    Capsule().fill(Color.white.opacity(0.075))
+                        .frame(width: width, height: 8).offset(x: inset)
+                    Capsule().fill(statusColor)
+                        .frame(width: width * min(max(dailyIncrease / cap, 0), 1), height: 8)
+                        .offset(x: inset)
                     ForEach([5, 10, 15, 20], id: \.self) { threshold in
+                        let x = inset + width * CGFloat(threshold) / CGFloat(cap)
                         Circle()
-                            .fill(dailyIncrease >= Double(threshold) ? statusColor : Color.white.opacity(0.22))
+                            .fill(dailyIncrease >= Double(threshold) ? statusColor : Color.white.opacity(0.35))
                             .frame(width: 5, height: 5)
-                            .offset(
-                                x: min(
-                                    geometry.size.width - 5,
-                                    geometry.size.width * CGFloat(threshold) / CGFloat(cap) - 2.5
-                                )
-                            )
+                            .position(x: x, y: 4)
+                        Text([5: "5 注意", 10: "10 提醒", 15: "15 偏高", 20: "20 上限"][threshold] ?? "")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.65))
+                            .fixedSize()
+                            .position(x: x, y: 23)
                     }
                 }
-                .frame(height: 8)
-            }
-            .frame(height: 8)
-
-            HStack {
-                Text("5 注意")
-                Spacer()
-                Text("10 提醒")
-                Spacer()
-                Text("15 偏高")
-                Spacer()
-                Text("20 上限")
-            }
-            .font(.system(size: 8.5, weight: .medium))
-            .foregroundStyle(.white.opacity(0.38))
+            }.frame(height: 31)
         }
         .padding(13)
         .background(Color.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 13))
@@ -741,7 +746,7 @@ private struct TokenUsageCard: View {
                 Text(
                     "总累计 \(TokenCountFormatter.compact(usage.summary.lifetimeTokens, style: unitStyle))"
                 )
-                    .font(.system(size: 8.5, weight: .medium))
+                    .font(.system(size: 9.5, weight: .medium))
                     .foregroundStyle(.cyan.opacity(0.85))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 4)
@@ -781,7 +786,7 @@ private struct TokenUsageCard: View {
                     Text("暂时没有每日 Token 趋势数据")
                 }
                 .font(.system(size: 9.5))
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(.white.opacity(0.65))
                 .frame(maxWidth: .infinity, minHeight: 48)
             } else {
                 GeometryReader { geometry in
@@ -806,8 +811,8 @@ private struct TokenUsageCard: View {
                                     )
                                     .shadow(color: .cyan.opacity(0.22), radius: 3)
                                 Text(shortDate(bucket.startDate))
-                                    .font(.system(size: 7.5, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.white.opacity(0.35))
+                                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.65))
                             }
                             .frame(maxWidth: .infinity)
                             .help("\(bucket.startDate)：\(bucket.tokens.formatted()) Token")
@@ -846,8 +851,8 @@ private struct TokenMetric: View {
                 .foregroundStyle(.white)
                 .lineLimit(1)
             Text(label)
-                .font(.system(size: 8.2))
-                .foregroundStyle(.white.opacity(0.4))
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.65))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
@@ -875,7 +880,7 @@ private struct TokenUsageUnavailableCard: View {
                     .foregroundStyle(.white)
                 Text(isRefreshing ? "正在读取 Token 数据…" : "Token 数据暂不可用")
                     .font(.system(size: 9.5))
-                    .foregroundStyle(.white.opacity(0.42))
+                    .foregroundStyle(.white.opacity(0.65))
             }
             Spacer()
         }
@@ -883,55 +888,5 @@ private struct TokenUsageUnavailableCard: View {
         .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 13))
         .overlay(RoundedRectangle(cornerRadius: 13).stroke(Color.white.opacity(0.06), lineWidth: 1))
         .help(errorMessage ?? "等待 Codex 返回 Token 数据")
-    }
-}
-
-private struct StatTile: View {
-    let icon: String
-    let value: String
-    let detail: String
-    let label: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.cyan.opacity(0.85))
-            Text(value)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .foregroundStyle(.white)
-            Text(detail)
-                .font(.system(size: 8.5))
-                .foregroundStyle(.white.opacity(0.38))
-                .lineLimit(1)
-            Text(label)
-                .font(.system(size: 8.5, weight: .medium))
-                .foregroundStyle(.white.opacity(0.55))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 11))
-        .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.white.opacity(0.055), lineWidth: 1))
-    }
-}
-
-private struct ErrorBanner: View {
-    let message: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.system(size: 10.5))
-                .fixedSize(horizontal: false, vertical: true)
-                .foregroundStyle(.white.opacity(0.86))
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.18), lineWidth: 1))
     }
 }

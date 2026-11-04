@@ -1,16 +1,19 @@
-# Codex Usage Alert / Codex 用量预警
+# Codex Usage Alert / 用量预警
 
 <p align="center">
   <img src="Resources/AppIcon.png" width="128" alt="Codex Usage Alert icon">
 </p>
 
-一个原生 macOS 菜单栏用量监控器。它通过本机 `codex app-server` 读取当前 ChatGPT/Codex 额度窗口与 Token 活动数据，并在用量偏高时发送系统通知。
+一个原生 macOS 菜单栏用量监控器，同时监控口袋（Codex）和 Grok Bot。口袋通过本机 `codex app-server` 读取额度与 Token 活动；Grok Bot 读取本地 JSON 文件，也可在设置中手动填写。两项服务分别记录当日增量，并发送分级系统通知。
 
 > 本项目是独立的开源工具，不是 OpenAI 官方产品。应用不会要求或保存你的账号密码、Cookie 或 API Key。
 
 ## 功能
 
-- 菜单栏显示当前周期已用百分比
+- 双环形卡片显示口袋与 Grok Bot 的周期用量和重置时间，可切换详情
+- 菜单栏显示已开启且数据有效的服务中的最高已用百分比
+- 设置可分别开关两项服务；Grok Bot 支持手动填写百分比与重置时间
+- Grok Bot 文件缺失、无效或超过 24 小时未更新时显示状态，不参与通知或最高值计算
 - 菜单栏使用 16pt 专用无阴影矢量图标
 - 点击应用图标打开完整仪表盘，同时保留菜单栏入口
 - 自动刷新频率可设置，默认 15 分钟；也可选择固定时间刷新
@@ -27,8 +30,15 @@
 
 - macOS 13 或更高版本
 - Swift 6 工具链
-- 本机已安装 Codex CLI 或 ChatGPT/Codex macOS 应用
-- 已使用支持 Codex 服务的 ChatGPT 身份登录
+- 监控口袋时：本机已安装 Codex CLI 或 ChatGPT/Codex macOS 应用
+- 监控口袋时：已使用支持 Codex 服务的 ChatGPT 身份登录
+- 仅监控 Grok Bot 时无需安装或登录 Codex
+
+## Grok Bot 接入
+
+Grok Bot 没有公开用量 API。本应用不会自动获取 Grok 账号用量，而是每分钟读取 `~/Library/Application Support/CodexUsageAlert/grok-usage.json`。设置中的手动填写也写入此文件；计数由文件提供，首次手动创建为 0。文件需由你或外部工具持续更新。格式、原子写入约定及过期规则见 [Grok Bot 用量文件说明](docs/grok-usage-format.md)。
+
+每项服务当天的第一笔有效读数作为基线，关闭期间的用量无法完整还原；阈值按本地自然日去重。20 个百分点是个人提醒预算，并非服务官方限制。
 
 ## 数据来源
 
@@ -44,7 +54,8 @@ Token 活动接口不可用时，额度监控仍会继续工作。`20%` 是应�
 ## 构建与运行
 
 ```bash
-swift test
+swift build && swift test
+./scripts/sync_version.sh
 ./scripts/build_app.sh
 open "dist/Codex Usage Alert.app"
 ```

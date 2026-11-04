@@ -11,3 +11,11 @@ dist/
 # Local historical packages from the source merge
 archive-dist/
 dist-sandbox/
+
+# Local verification captures and packaged legacy artifacts
+.impeccable/review/
+*.dmg
+*.pkg
+*.app/
+legacy/**/dist/
+legacy/**/dist-sandbox/

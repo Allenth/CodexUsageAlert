@@ -6,6 +6,8 @@ PROJECT_DIR="${SCRIPT_DIR:h}"
 OUTPUT_DIR="$PROJECT_DIR/dist"
 APP_DIR="$OUTPUT_DIR/Codex Usage Alert.app"
 
+"$SCRIPT_DIR/sync_version.sh"
+
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
 swift build --package-path "$PROJECT_DIR" -c release --sdk "$SDK_PATH" \

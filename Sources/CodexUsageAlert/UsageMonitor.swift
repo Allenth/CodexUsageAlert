@@ -50,11 +50,33 @@ final class UsageMonitor: ObservableObject {
     @Published private(set) var dailyRefreshTime: Date
     @Published private(set) var tokenUnitStyle: TokenUnitStyle
 
+    @Published private(set) var codexMonitoringEnabled: Bool
+    @Published private(set) var grokMonitoringEnabled: Bool
+    @Published private(set) var grokSnapshot: GrokUsageSnapshot?
+    @Published private(set) var grokStatus: GrokUsageStatus = .missing
+    @Published private(set) var grokDailyIncrease: Double = 0
+    @Published private(set) var grokErrorMessage: String?
+
     private let defaults = UserDefaults.standard
     private var timer: Timer?
+    private var grokTimer: Timer?
+    private var codexTracker = DailyUsageTracker()
+    private var grokTracker = DailyUsageTracker()
 
     init() {
         let defaults = UserDefaults.standard
+        codexMonitoringEnabled = defaults.object(forKey: "codexMonitoringEnabled") as? Bool ?? true
+        grokMonitoringEnabled = defaults.object(forKey: "grokMonitoringEnabled") as? Bool ?? true
+        if let data = defaults.data(forKey: "codexDailyTracker"),
+           let saved = try? JSONDecoder().decode(DailyUsageTracker.self, from: data) {
+            codexTracker = saved
+        } else if let day = defaults.string(forKey: "baselineDay"),
+                  let baseline = defaults.object(forKey: "baselineUsedPercent") as? Double {
+            codexTracker = DailyUsageTracker(day: day, baseline: baseline,
+                notifiedThresholds: Set(defaults.array(forKey: "notifiedThresholds") as? [Int] ?? []))
+        }
+        if let data = defaults.data(forKey: "grokDailyTracker"),
+           let saved = try? JSONDecoder().decode(DailyUsageTracker.self, from: data) { grokTracker = saved }
         refreshSchedule = RefreshSchedule(
             rawValue: defaults.string(forKey: "refreshSchedule") ?? ""
         ) ?? .fifteenMinutes
@@ -71,11 +93,41 @@ final class UsageMonitor: ObservableObject {
         requestNotificationPermission()
         refresh()
         scheduleNextRefresh()
+        // Check local file freshness even with a daily Codex schedule.
+        grokTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshGrok() }
+        }
+    }
+
+    var codexDataAvailable: Bool {
+        guard let snapshot else { return false }
+        return codexMonitoringEnabled && errorMessage == nil
+            && Date().timeIntervalSince(snapshot.fetchedAt) <= 86_400
+    }
+
+    var maximumUsedPercent: Double? {
+        UsageAggregation.maximum(codex: codexDataAvailable ? snapshot?.usedPercent : nil,
+                                 codexEnabled: codexMonitoringEnabled,
+                                 grok: grokStatus == .ready ? grokSnapshot?.usedPercent : nil,
+                                 grokEnabled: grokMonitoringEnabled)
+    }
+
+    var grokLevel: UsageAlertLevel { DailyUsagePolicy.level(for: grokDailyIncrease) }
+    var overallLevel: UsageAlertLevel {
+        max(codexDataAvailable ? level : .normal,
+            grokMonitoringEnabled && grokStatus == .ready ? grokLevel : .normal)
+    }
+    var overallStatus: String {
+        if !codexMonitoringEnabled && !grokMonitoringEnabled { return "监控已关闭" }
+        if overallLevel != .normal { return overallLevel.title }
+        if codexMonitoringEnabled && !codexDataAvailable { return "口袋待更新" }
+        if grokMonitoringEnabled && grokStatus != .ready { return "Grok Bot \(grokStatus.title)" }
+        return "一切正常"
     }
 
     var menuTitle: String {
-        guard let snapshot else { return "…" }
-        return "\(Int(snapshot.usedPercent.rounded()))%"
+        guard let value = maximumUsedPercent else { return "—" }
+        return "\(Int(value.rounded()))%"
     }
 
     var level: UsageAlertLevel {
@@ -127,16 +179,60 @@ final class UsageMonitor: ObservableObject {
         scheduleNextRefresh()
     }
 
+    func setMonitoring(codex: Bool, grok: Bool) {
+        codexMonitoringEnabled = codex
+        grokMonitoringEnabled = grok
+        defaults.set(codex, forKey: "codexMonitoringEnabled")
+        defaults.set(grok, forKey: "grokMonitoringEnabled")
+        if !codex { errorMessage = nil }
+        refresh()
+    }
+
+    func saveManualGrokUsage(percent: Double, resetAt: Date? = nil) throws {
+        guard percent.isFinite, (0...100).contains(percent) else { throw GrokUsageError.invalidData }
+        guard let resetAt = resetAt ?? grokSnapshot?.resetAt else { throw GrokUsageError.missingResetDate }
+        let previous = grokSnapshot
+        let manual = GrokUsageSnapshot(usedPercent: percent, resetAt: resetAt,
+            plan: previous?.plan ?? "手动录入", tasksToday: previous?.tasksToday ?? 0,
+            tasksPeriod: previous?.tasksPeriod ?? 0)
+        try GrokUsageFile.write(manual)
+        refreshGrok()
+    }
+
+    func refreshGrok() {
+        guard grokMonitoringEnabled else {
+            grokStatus = .disabled
+            grokErrorMessage = nil
+            grokDailyIncrease = 0
+            return
+        }
+        let result = GrokUsageFile.read()
+        grokSnapshot = result.snapshot
+        grokStatus = result.status
+        grokErrorMessage = result.message
+        guard result.status == .ready, let value = result.snapshot else {
+            grokDailyIncrease = 0
+            return
+        }
+        let crossed = grokTracker.record(usedPercent: value.usedPercent, resetAt: value.resetAt)
+        grokDailyIncrease = grokTracker.increase
+        defaults.set(try? JSONEncoder().encode(grokTracker), forKey: "grokDailyTracker")
+        notify(service: "grok-bot", name: "Grok Bot", increase: grokDailyIncrease,
+               usedPercent: value.usedPercent, crossed: crossed)
+    }
+
     func refresh() {
-        guard !isRefreshing else { return }
+        refreshGrok()
+        guard codexMonitoringEnabled, !isRefreshing else { return }
         isRefreshing = true
         errorMessage = nil
 
-        DispatchQueue.global(qos: .utility).async {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
             let result = Result { try CodexAppServerClient().fetchDashboardSnapshot() }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.isRefreshing = false
+                guard self.codexMonitoringEnabled else { return }
                 switch result {
                 case .success(let dashboard):
                     self.accept(dashboard.quota)
@@ -209,42 +305,22 @@ final class UsageMonitor: ObservableObject {
 
     private func accept(_ newSnapshot: UsageSnapshot) {
         snapshot = newSnapshot
-
-        let today = Self.dayKey(for: newSnapshot.fetchedAt)
-        let savedDay = defaults.string(forKey: "baselineDay")
-        let savedBaseline = defaults.object(forKey: "baselineUsedPercent") as? Double
-
-        if savedDay != today || savedBaseline == nil || newSnapshot.usedPercent < (savedBaseline ?? 0) {
-            defaults.set(today, forKey: "baselineDay")
-            defaults.set(newSnapshot.usedPercent, forKey: "baselineUsedPercent")
-            defaults.set([], forKey: "notifiedThresholds")
-            dailyIncrease = 0
-            return
-        }
-
-        let baseline = savedBaseline ?? newSnapshot.usedPercent
-        dailyIncrease = DailyUsagePolicy.increase(
-            baseline: baseline,
-            current: newSnapshot.usedPercent
-        )
-        notifyForCrossedThresholds()
+        let crossed = codexTracker.record(usedPercent: newSnapshot.usedPercent,
+                                          resetAt: newSnapshot.resetsAt, at: newSnapshot.fetchedAt)
+        dailyIncrease = codexTracker.increase
+        defaults.set(try? JSONEncoder().encode(codexTracker), forKey: "codexDailyTracker")
+        notify(service: "codex", name: "口袋", increase: dailyIncrease,
+               usedPercent: newSnapshot.usedPercent, crossed: crossed)
     }
 
-    private func notifyForCrossedThresholds() {
-        var notified = Set(defaults.array(forKey: "notifiedThresholds") as? [Int] ?? [])
-        let crossed = DailyUsagePolicy.defaultThresholds
-            .map(Int.init)
-            .filter { dailyIncrease >= Double($0) && !notified.contains($0) }
-
+    private func notify(service: String, name: String, increase: Double,
+                        usedPercent: Double, crossed: [Int]) {
+        // Coalesce levels crossed in one refresh; all remain consumed today.
         guard let highest = crossed.max() else { return }
-        notified.formUnion(crossed)
-        defaults.set(Array(notified).sorted(), forKey: "notifiedThresholds")
-
-        let level = DailyUsagePolicy.level(for: dailyIncrease)
         sendNotification(
-            identifier: "codex-daily-\(Self.dayKey(for: Date()))-\(highest)",
-            title: level.title,
-            body: "今天已消耗 \(Self.percent(dailyIncrease)) 个额度百分点；当前周期累计使用 \(Self.percent(snapshot?.usedPercent ?? 0))%。"
+            identifier: "\(service)-daily-\(Self.dayKey(for: Date()))-\(highest)",
+            title: "\(name) · \(DailyUsagePolicy.level(for: increase).title)",
+            body: "今天已消耗 \(Self.percent(increase)) 个额度百分点；当前周期累计使用 \(Self.percent(usedPercent))%。"
         )
     }
 

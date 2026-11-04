@@ -9,6 +9,18 @@
 
 ## 进行中版本
 
+### 2026-11-04 13:47:27 CST (UTC+08:00) — 双服务用量监控与本机安装
+
+- 版本：`0.2.9`（Build `29`）。
+- 完成内容：标题改为“用量预警”，新增口袋与 Grok Bot 双环卡片、详情切换、共用预警及来源页脚；菜单栏取已开启且有效服务的最高百分比。Grok Bot 读取本地 JSON，提供手动百分比／重置时间填写与独立监控开关；缺失、无效、超过 24 小时数据均安全显示状态。独立记录每日 5/10/15/20 阈值，跨重启和周期重置去重，迁移旧版口袋基线。
+- 主要文件：`Sources/CodexUsageAlert/`、`Sources/UsageCore/GrokUsage.swift`、`Tests/UsageCoreTests/GrokUsageTests.swift`、`Resources/Info.plist`、`scripts/build_app.sh`、`README.md`、`docs/grok-usage-format.md`、`docs/usage-v2-ui.md`、`.gitignore`、更新日志；清理合并说明与旧日志中的本机路径。
+- 验证：最终 `swift build && swift test` 通过，19 项 XCTest 零失败；`scripts/build_app.sh` Release 打包通过，安装包 `codesign --verify --deep --strict`、plist 校验、Shell 语法检查和 `git diff --check` 通过。实际界面验证口袋真实额度／Token、服务切换、Grok 未接入／18% 手动记录／过期状态、越界 101 拒绝、独立关闭与重启持久化；测试文件与 Grok 基线已恢复。原生截图复核后修正预算刻度，修复复核结果 ship。未将规则测试等同于系统通知展示。
+- 安装：原进程从旧源码的打包目录运行，标准应用目录没有旧安装。退出原进程后安装并启动 `/Applications/Codex Usage Alert.app`，实读版本 0.2.9 / 29；原源码和历史包未删除。
+- 发布准备：MIT LICENSE 已确认；现有公开远端为 `Allenth/CodexUsageAlert`（账号显示名称 `Kingway_Meng`），默认分支 `main`。在独立发布分支保留已发布历史、重建尚未发布的合并提交以去除本机路径，不强推。基础历史 207 个唯一文件对象和最终工作树 69 个文件的常见密钥／凭据／个人路径扫描无命中，未跟踪 `archive-dist/` 或 legacy 安装包。推送结果以远端提交为准。
+- 限制：任务指定的两张设计图不在工作区，按文字布局与现有深色样式实现，未做原稿像素比对；当前 macOS 通知权限为“未允许”，未验证通知横幅送达。Grok 需要外部更新或手动填写，本次不包含自动采集器。
+- 分支：开发 `merge/usage-sources`；脱敏发布 `release/usage-v2`。
+- 提交：pending commit。
+
 ### 2026-11-04 13:30:02 CST (UTC+08:00) — 按 A 为主合并项目并归档历史包
 
 - 版本：`0.2.8`（Build `28`）。

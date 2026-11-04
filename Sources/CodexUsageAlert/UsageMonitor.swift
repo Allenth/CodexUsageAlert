@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import OSLog
 import ServiceManagement
 import UserNotifications
 import UsageCore
@@ -37,6 +38,7 @@ enum RefreshSchedule: String, CaseIterable, Identifiable {
 @MainActor
 final class UsageMonitor: ObservableObject {
     static let shared = UsageMonitor()
+    private static let logger = Logger(subsystem: "com.huijing.codex-usage-alert", category: "CodexUsage")
 
     @Published var snapshot: UsageSnapshot?
     @Published var tokenUsage: AccountTokenUsage?
@@ -53,6 +55,7 @@ final class UsageMonitor: ObservableObject {
     @Published private(set) var menuUpdatedAt = Date()
 
     @Published private(set) var codexMonitoringEnabled: Bool
+    @Published private(set) var codexExecutablePath: String
     @Published private(set) var grokMonitoringEnabled: Bool
     @Published private(set) var grokSnapshot: GrokUsageSnapshot?
     @Published private(set) var grokStatus: GrokUsageStatus = .missing
@@ -67,11 +70,13 @@ final class UsageMonitor: ObservableObject {
     private var clockObservers: [NSObjectProtocol] = []
     private var codexTracker = DailyUsageTracker()
     private var grokTracker = DailyUsageTracker()
+    private var codexRequestID: UUID?
 
     init() {
         let defaults = UserDefaults.standard
         menuBarDisplayStyle = MenuBarDisplayStyle(savedValue: defaults.string(forKey: "menuBarDisplayStyle"))
         codexMonitoringEnabled = defaults.object(forKey: "codexMonitoringEnabled") as? Bool ?? true
+        codexExecutablePath = defaults.string(forKey: "codexExecutablePath") ?? ""
         grokMonitoringEnabled = defaults.object(forKey: "grokMonitoringEnabled") as? Bool ?? true
         if let data = defaults.data(forKey: "codexDailyTracker"),
            let saved = try? JSONDecoder().decode(DailyUsageTracker.self, from: data) {
@@ -223,9 +228,22 @@ final class UsageMonitor: ObservableObject {
         scheduleNextRefresh()
     }
 
-    func setMonitoring(codex: Bool, grok: Bool) {
+    func setMonitoring(codex: Bool, grok: Bool, customPath: String) {
+        let path = customPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if path != codexExecutablePath || codex != codexMonitoringEnabled {
+            // A previous request may finish after settings have changed.
+            // Only the request for the current configuration may publish data.
+            codexRequestID = nil
+            isRefreshing = false
+            snapshot = nil
+            tokenUsage = nil
+            tokenUsageErrorMessage = nil
+            dailyIncrease = 0
+        }
+        codexExecutablePath = path
         codexMonitoringEnabled = codex
         grokMonitoringEnabled = grok
+        defaults.set(path, forKey: "codexExecutablePath")
         defaults.set(codex, forKey: "codexMonitoringEnabled")
         defaults.set(grok, forKey: "grokMonitoringEnabled")
         if !codex { errorMessage = nil }
@@ -275,21 +293,28 @@ final class UsageMonitor: ObservableObject {
         guard codexMonitoringEnabled, !isRefreshing else { return }
         isRefreshing = true
         errorMessage = nil
+        let requestID = UUID()
+        codexRequestID = requestID
+        let customPath = codexExecutablePath
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let result = Result { try CodexAppServerClient().fetchDashboardSnapshot() }
+            let result = Result { try CodexAppServerClient(customPath: customPath).fetchDashboardSnapshot() }
             DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
+                guard let self, self.codexRequestID == requestID else { return }
+                self.codexRequestID = nil
                 self.isRefreshing = false
                 guard self.codexMonitoringEnabled else { return }
                 switch result {
                 case .success(let dashboard):
+                    Self.logger.info("Codex quota refresh succeeded: usedPercent=\(dashboard.quota.usedPercent, privacy: .public), tokenUsageAvailable=\(dashboard.tokenUsage != nil, privacy: .public)")
                     self.accept(dashboard.quota)
                     if let tokenUsage = dashboard.tokenUsage {
                         self.tokenUsage = tokenUsage
                     }
                     self.tokenUsageErrorMessage = dashboard.tokenUsageError
                 case .failure(let error):
+                    let code = (error as? CodexUsageClientError)?.diagnosticCode ?? "unexpected_error"
+                    Self.logger.error("Codex quota refresh failed: \(code, privacy: .public)")
                     self.errorMessage = error.localizedDescription
                 }
             }

@@ -332,6 +332,7 @@ struct UsagePopover: View {
         let tint: Color = !enabled(service) ? DashboardStyle.secondary : needsAttention ? .orange : DashboardStyle.mint
         return Label(alertText(for: service), systemImage: !enabled(service) ? "pause.circle" : needsAttention ? "exclamationmark.triangle.fill" : "checkmark")
             .font(.system(size: 10.5))
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(needsAttention ? .white : tint)
             .padding(.horizontal, 11).padding(.vertical, 9)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -344,6 +345,9 @@ struct UsagePopover: View {
         let name = service.rawValue
         guard enabled(service) else { return "\(name) 监控已关闭，可在设置中开启" }
         guard let used = percent(for: service) else {
+            if service == .codex, let error = monitor.errorMessage {
+                return "Codex：\(error)"
+            }
             return "\(name)：\(state(for: service)) · \(service == .codex ? "请刷新或检查登录状态" : "请更新文件或手动填写")"
         }
         if increase(for: service) >= 5 {
@@ -491,6 +495,7 @@ private struct RefreshSettingsView: View {
     @State private var selectedTokenUnitStyle: TokenUnitStyle
     @State private var selectedMenuBarStyle: MenuBarDisplayStyle
     @State private var codexEnabled: Bool
+    @State private var codexExecutablePath: String
     @State private var grokEnabled: Bool
     @State private var manualPercent = ""
     @State private var manualResetAt: Date
@@ -505,6 +510,7 @@ private struct RefreshSettingsView: View {
         _selectedTokenUnitStyle = State(initialValue: monitor.tokenUnitStyle)
         _selectedMenuBarStyle = State(initialValue: monitor.menuBarDisplayStyle)
         _codexEnabled = State(initialValue: monitor.codexMonitoringEnabled)
+        _codexExecutablePath = State(initialValue: monitor.codexExecutablePath)
         _grokEnabled = State(initialValue: monitor.grokMonitoringEnabled)
         _manualResetAt = State(initialValue: monitor.grokSnapshot?.resetAt ?? Date())
     }
@@ -544,106 +550,125 @@ private struct RefreshSettingsView: View {
                         .keyboardShortcut(.defaultAction)
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Toggle("监控 Codex", isOn: $codexEnabled)
-                    Toggle("监控 Grok Bot", isOn: $grokEnabled)
-                }.toggleStyle(.switch).tint(.cyan).font(.system(size: 12))
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Toggle("监控 Codex", isOn: $codexEnabled)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Codex CLI 自定义路径")
+                                    .font(.system(size: 12, weight: .medium))
+                                TextField("留空自动查找", text: $codexExecutablePath)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(size: 11))
+                                    .accessibilityLabel("Codex CLI 自定义路径")
+                                    .accessibilityHint("留空自动查找，也可填写以斜杠或波浪号开头的可执行文件路径")
+                                Text("留空自动查找；支持 ~/ 路径。点击完成后保存并刷新。")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Toggle("监控 Grok Bot", isOn: $grokEnabled)
+                        }.toggleStyle(.switch).tint(.cyan).font(.system(size: 12))
 
-                Picker("菜单栏显示", selection: $selectedMenuBarStyle) {
-                    ForEach(MenuBarDisplayStyle.allCases) { style in
-                        Text(style.title).tag(style)
-                    }
-                }
-                .pickerStyle(.menu)
-                .font(.system(size: 12))
-                .help("C 代表 Codex，G 代表 Grok Bot；悬停菜单栏可查看已用和剩余比例。")
-
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("Grok Bot 手动填写已用百分比").font(.system(size: 12, weight: .medium))
-                    HStack {
-                        TextField("0–100", text: $manualPercent)
-                            .textFieldStyle(.roundedBorder)
-                            .accessibilityLabel("Grok Bot 已用百分比")
-                            .onChange(of: manualPercent) { _ in manualSaved = false; manualError = nil }
-                        Text("%")
-                        Button("保存数值") { saveManual() }
-                    }
-                    DatePicker("周期重置时间", selection: $manualResetAt)
-                        .font(.system(size: 11))
-                    Text(manualSaved ? "已保存，数据有效期 24 小时" : "写入本地文件；首次记录作为今日基线。")
-                        .font(.system(size: 10)).foregroundStyle(manualSaved ? .green : .white.opacity(0.7))
-                    if let manualError {
-                        Text(manualError).font(.system(size: 10)).foregroundStyle(.orange)
-                    }
-                }
-                Divider()
-                Picker(
-                    "刷新频率",
-                    selection: $selectedSchedule
-                ) {
-                    ForEach(RefreshSchedule.allCases) { schedule in
-                        Text(schedule.title).tag(schedule)
-                    }
-                }
-                .pickerStyle(.radioGroup)
-                .foregroundStyle(.white)
-
-                if selectedSchedule == .daily {
-                    HStack {
-                        Label("每天刷新时间", systemImage: "calendar.badge.clock")
-                            .font(.system(size: 11.5, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.8))
-                        Spacer()
-                        DatePicker(
-                            "",
-                            selection: $selectedDailyRefreshTime,
-                            displayedComponents: .hourAndMinute
-                        )
-                        .labelsHidden()
-                        .datePickerStyle(.field)
-                    }
-                    .padding(11)
-                    .background(Color.cyan.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.cyan.opacity(0.16), lineWidth: 1)
-                    )
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Token 数量单位")
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.8))
-
-                    Picker(
-                        "Token 数量单位",
-                        selection: $selectedTokenUnitStyle
-                    ) {
-                        ForEach(TokenUnitStyle.allCases) { style in
-                            Text(style.title).tag(style)
+                        Picker("菜单栏显示", selection: $selectedMenuBarStyle) {
+                            ForEach(MenuBarDisplayStyle.allCases) { style in
+                                Text(style.title).tag(style)
+                            }
                         }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                }
+                        .pickerStyle(.menu)
+                        .font(.system(size: 12))
+                        .help("C 代表 Codex，G 代表 Grok Bot；悬停菜单栏可查看已用和剩余比例。")
 
-                Divider().overlay(Color.white.opacity(0.08))
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text("Grok Bot 手动填写已用百分比").font(.system(size: 12, weight: .medium))
+                            HStack {
+                                TextField("0–100", text: $manualPercent)
+                                    .textFieldStyle(.roundedBorder)
+                                    .accessibilityLabel("Grok Bot 已用百分比")
+                                    .onChange(of: manualPercent) { _ in manualSaved = false; manualError = nil }
+                                Text("%")
+                                Button("保存数值") { saveManual() }
+                            }
+                            DatePicker("周期重置时间", selection: $manualResetAt)
+                                .font(.system(size: 11))
+                            Text(manualSaved ? "已保存，数据有效期 24 小时" : "写入本地文件；首次记录作为今日基线。")
+                                .font(.system(size: 10)).foregroundStyle(manualSaved ? .green : .white.opacity(0.7))
+                            if let manualError {
+                                Text(manualError).font(.system(size: 10)).foregroundStyle(.orange)
+                            }
+                        }
+                        Divider()
+                        Picker(
+                            "刷新频率",
+                            selection: $selectedSchedule
+                        ) {
+                            ForEach(RefreshSchedule.allCases) { schedule in
+                                Text(schedule.title).tag(schedule)
+                            }
+                        }
+                        .pickerStyle(.radioGroup)
+                        .foregroundStyle(.white)
 
-                Button {
-                    monitor.openNotificationSettings()
-                } label: {
-                    HStack {
-                        Label("打开 macOS 通知设置", systemImage: "bell.badge.fill")
-                        Spacer()
-                        Image(systemName: "arrow.up.right")
+                        if selectedSchedule == .daily {
+                            HStack {
+                                Label("每天刷新时间", systemImage: "calendar.badge.clock")
+                                    .font(.system(size: 11.5, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.8))
+                                Spacer()
+                                DatePicker(
+                                    "",
+                                    selection: $selectedDailyRefreshTime,
+                                    displayedComponents: .hourAndMinute
+                                )
+                                .labelsHidden()
+                                .datePickerStyle(.field)
+                            }
+                            .padding(11)
+                            .background(Color.cyan.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.cyan.opacity(0.16), lineWidth: 1)
+                            )
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Token 数量单位")
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.8))
+
+                            Picker(
+                                "Token 数量单位",
+                                selection: $selectedTokenUnitStyle
+                            ) {
+                                ForEach(TokenUnitStyle.allCases) { style in
+                                    Text(style.title).tag(style)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.segmented)
+                        }
+
+                        Divider().overlay(Color.white.opacity(0.08))
+
+                        Button {
+                            monitor.openNotificationSettings()
+                        } label: {
+                            HStack {
+                                Label("打开 macOS 通知设置", systemImage: "bell.badge.fill")
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                            }
+                            .foregroundStyle(.white.opacity(0.82))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .foregroundStyle(.white.opacity(0.82))
+                    .padding(.trailing, 4)
                 }
-                .buttonStyle(.plain)
             }
             .padding(20)
         }
         .frame(width: 330)
+        .frame(maxHeight: 560)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
     }
@@ -664,7 +689,7 @@ private struct RefreshSettingsView: View {
 
     private func saveAndClose() {
         monitor.setMenuBarDisplayStyle(selectedMenuBarStyle)
-        monitor.setMonitoring(codex: codexEnabled, grok: grokEnabled)
+        monitor.setMonitoring(codex: codexEnabled, grok: grokEnabled, customPath: codexExecutablePath)
         monitor.applySettings(
             refreshSchedule: selectedSchedule,
             dailyRefreshTime: selectedDailyRefreshTime,

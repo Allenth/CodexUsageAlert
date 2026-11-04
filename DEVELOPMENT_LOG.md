@@ -9,6 +9,17 @@
 
 ## 进行中版本
 
+### 2026-11-04 15:19:28 CST (UTC+08:00) — 修复 GUI 启动后的 Codex 用量读取
+
+- 版本：`0.3.3`（Build `33`），由 `scripts/sync_version.sh` 同步，源码、Release 包及安装版 plist 一致。
+- 复现与根因：已安装 `0.3.2` 主窗口显示“读取失败”；其 Helper 在 `PATH=/usr/bin:/bin:/usr/sbin:/sbin` 下报“未找到 Codex CLI”，仅加回 `~/.local/bin` 就返回真实额度。旧查找表遗漏该目录且 ChatGPT 内置路径过时。检查 unified log 未见应用自有诊断；当日 14:41、14:42 的两份 crash report 均指向 `NSConcreteTask terminationReason` → `waitForResponse`，确认输出 EOF 时过早读取进程退出状态会导致 SIGABRT。
+- 完成内容：按自定义路径 → 用户 `.local/bin` → Homebrew → `/usr/local/bin` → ChatGPT/Codex 内置 CLI → 登录 shell PATH 查找；支持 `~/`、拒绝无效显式路径，登录 shell 查询限时 3 秒。使用单调时钟轮询 stdout/stderr，限制缓冲，消除 stderr 管道堵塞和退出状态竞态；超时、认证失败与意外退出最多重试一次并回收子进程，Token 失败保留额度。新增设置及可换行错误提示、配置请求 UUID 隔离与不含凭据的诊断日志。
+- 主要文件：`Sources/UsageCore/CodexAppServerClient.swift`、新增 `CodexExecutableResolver.swift`、`Sources/CodexUsageAlert/UsageMonitor.swift`、`CodexUsageAlertApp.swift`、新增 `Tests/UsageCoreTests/CodexAppServerClientTests.swift`、README、版本及两份日志。
+- 验证：最终 `swift build && swift test` 通过，43 项 XCTest 零失败（新增 17 项）；覆盖查找优先级、握手、认证恢复与持续失败、超时两次及忽略 SIGTERM 的回收、大量 stderr、非匹配 RPC、stdout 提前关闭且进程存活、Token 超时降级等。实际登录 shell PATH 读取成功；精简 PATH 下新版 Helper 返回真实 `22%`。Release 打包、安装前后 `codesign --verify --deep --strict`、源/安装版本校验、二进制一致性及 `git diff --check` 通过；只读复审无阻断问题。
+- 实机：备份旧安装至被忽略的 `archive-dist/pre-codexfail/` 后覆盖 `/Applications/Codex Usage Alert.app` 并重启。15:16:21 与 15:18:26 的安装版日志确认 `usedPercent=22`、`tokenUsageAvailable=true`，GUI 显示已用 `22%`、剩余 `78%` 与 Token 本月汇总；设置中无效路径的清晰提示、路径保存和 `~/.local/bin/codex` 可用均已验证，交付恢复留空自动查找。Grok JSON 前后 SHA-256 一致。
+- 真实异常观察：设置验证中 Token 接口曾连续两次超时，日志记录两次尝试，GUI 保留 `22%` 额度并提示“已自动重试 1 次”；随后自动查找刷新恢复额度与 Token。当前实机未发生认证失败，该分支通过模拟服务验证，未修改登录凭据。
+- 分支：`main`；提交：pending commit（本记录与实现一并提交）；按任务要求普通推送至 `origin/main`，结果以远端提交核对为准。
+
 ### 2026-11-04 14:40:55 CST (UTC+08:00) — Grok Bot 按挂钟时间读取
 
 - 版本：`0.3.2`（Build `32`），由 `scripts/sync_version.sh` 同步，源 plist 与安装包一致。

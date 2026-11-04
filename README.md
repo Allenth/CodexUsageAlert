@@ -50,6 +50,10 @@ Grok Bot 没有公开用量 API。本应用不会自动获取 Grok 账号用量�
 
 Token 活动接口不可用时，额度监控仍会继续工作。`20%` 是应用默认的个人每日预算，不是 OpenAI 官方硬限制。
 
+CLI 查找顺序：设置中的自定义路径（支持 `~/`）→ `~/.local/bin` → `/opt/homebrew/bin` → `/usr/local/bin` → ChatGPT / Codex 应用内置 CLI → 登录 shell 的 PATH。自动查找不依赖 GUI 进程的 PATH；填写了无效自定义路径时会直接提示修正或清空，不会悄悄切换安装。
+
+查询超时、认证失败或 App Server 意外退出时，会重新启动查询并自动重试一次。持续失败时，界面会提示检查网络、重新运行 `codex login` 或检查 CLI 路径。Token 接口暂不可用仍保留已取得的额度数据。应用仅在本机 unified log 记录成功状态和错误类别，不保存完整 App Server stderr 或登录凭据。
+
 参考：[Codex App Server 文档](https://learn.chatgpt.com/docs/app-server)
 
 ## 构建与运行

@@ -4,18 +4,23 @@ import SwiftUI
 import UsageCore
 
 @MainActor
-final class MenuBarUsageController: NSObject {
+final class MenuBarUsageController: NSObject, NSPopoverDelegate {
     private let monitor: UsageMonitor
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
     private var observation: AnyCancellable?
+    private var localClickMonitor: Any?
+    private var globalClickMonitor: Any?
 
     init(monitor: UsageMonitor) {
         self.monitor = monitor
         super.init()
         statusItem.autosaveName = "Item-0"
         popover.behavior = .transient
+        popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: UsagePopover(monitor: monitor))
+        NotificationCenter.default.addObserver(self, selector: #selector(closePopover),
+            name: NSApplication.didResignActiveNotification, object: NSApp)
         if let button = statusItem.button {
             button.target = self
             button.action = #selector(togglePopover)
@@ -25,6 +30,12 @@ final class MenuBarUsageController: NSObject {
             // ObservableObject publishes before mutation; read the resulting values.
             DispatchQueue.main.async { self?.update() }
         }
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
+        if let globalClickMonitor { NSEvent.removeMonitor(globalClickMonitor) }
     }
 
     private func update() {
@@ -57,10 +68,56 @@ final class MenuBarUsageController: NSObject {
     @objc private func togglePopover() {
         guard let button = statusItem.button else { return }
         if popover.isShown {
-            popover.performClose(nil)
+            closePopover()
         } else {
+            NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            if let window = popover.contentViewController?.view.window {
+                window.level = .statusBar
+                window.makeKeyAndOrderFront(nil)
+            }
+            if popover.isShown { startClickMonitoring() }
         }
+    }
+
+    @objc private func closePopover() {
+        if popover.isShown { popover.performClose(nil) }
+    }
+
+    private func startClickMonitoring() {
+        stopClickMonitoring()
+        let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: clicks) { [weak self] _ in
+            self?.closePopover()
+        }
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: clicks) { [weak self] event in
+            guard let self, self.popover.isShown else { return event }
+            // Let the status button toggle the popover itself on mouse-up.
+            if let button = self.statusItem.button, event.window === button.window,
+               button.bounds.contains(button.convert(event.locationInWindow, from: nil)) {
+                return event
+            }
+            // Keep interactions in the popover and its attached sheets working.
+            let popoverWindow = self.popover.contentViewController?.view.window
+            var window = event.window
+            while let current = window {
+                if current === popoverWindow { return event }
+                window = current.sheetParent ?? current.parent
+            }
+            self.closePopover()
+            return event
+        }
+    }
+
+    func popoverWillClose(_ notification: Notification) {
+        stopClickMonitoring()
+    }
+
+    private func stopClickMonitoring() {
+        if let localClickMonitor { NSEvent.removeMonitor(localClickMonitor) }
+        if let globalClickMonitor { NSEvent.removeMonitor(globalClickMonitor) }
+        localClickMonitor = nil
+        globalClickMonitor = nil
     }
 }
 

@@ -9,6 +9,15 @@
 
 ## 进行中版本
 
+### 2026-11-16 15:29:33 CST (UTC+08:00) — 状态栏弹窗置前与外部点击收起
+
+- 版本：`0.3.4`（Build `34`），由 `scripts/sync_version.sh` 同步。
+- 完成内容：点击状态栏图标打开弹窗时激活应用，将弹窗提升到状态栏窗口层级并置前；监听应用内外的鼠标点击，在点击弹窗外或应用失去激活状态时收起。保留弹窗内部及附属窗口交互、图标再次点击切换，并在关闭和销毁时移除监听。
+- 主要文件：`Sources/CodexUsageAlert/MenuBarUsageController.swift`、`Resources/Info.plist`、`CHANGELOG.md`、本日志。
+- 验证：`swiftc -frontend -parse`、依赖模块生成及应用全量 `swiftc -swift-version 5 -typecheck`、`git diff --check` 通过；类型检查仅报告原有 `CodexUsageAlertApp.swift:588` 的 `onChange` 弃用警告。未运行自动测试、应用构建、打包、安装或交互验收。
+- 待 Kingway 手测：其他应用位于前台时点击状态栏图标，弹窗应在最前；点击桌面空白、其他应用或本应用主窗口应收起；内部按钮与设置仍可操作，再次点击图标可收起，多次展开／关闭后行为一致。
+- 分支：`codex/fix-status-popover`；提交：pending commit（本记录与实现一并提交）。
+
 ### 2026-11-04 15:19:28 CST (UTC+08:00) — 修复 GUI 启动后的 Codex 用量读取
 
 - 版本：`0.3.3`（Build `33`），由 `scripts/sync_version.sh` 同步，源码、Release 包及安装版 plist 一致。

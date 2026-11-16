@@ -9,6 +9,24 @@
 
 ## 进行中版本
 
+### 2026-11-16 15:35:13 CST (UTC+08:00) — 按内容高度完整展示用量窗口
+
+- 版本：`0.3.5`（Build `35`），由 `scripts/sync_version.sh` 同步。
+- 完成内容：取消主界面固定 620 点的高度上限和窗口默认高度，测量内容的自然高度并同步调整主窗口与状态栏弹窗；切换服务、展开 Token 详情或出现多行提示时重新计算。仅当内容超过屏幕可用高度（预留 40 点窗口装饰空间）时保留滚动。
+- 主要文件：`Sources/CodexUsageAlert/CodexUsageAlertApp.swift`、`MenuBarUsageController.swift`、版本及两份日志。
+- 验证：应用全量 `swiftc -swift-version 5 -typecheck -I .build/popover-check Sources/CodexUsageAlert/*.swift`、plist 校验和 `git diff --check` 通过；仍只有既有 `onChange` 弃用警告。复核 SwiftUI 内容测量、首选内容尺寸同步及版本差异。未运行自动测试、应用构建、打包、安装或交互验收。
+- 待 Kingway 手测：打开主窗口及状态栏弹窗，屏幕放得下时应一次看到页脚；切换 Codex/Grok、展开与收起 Token 详情后窗口高度应跟随变化，无需滚动；内容超出小屏幕可用高度时仍可滚动访问底部。
+- 分支：`codex/fix-status-popover`；提交：pending commit（与实现一并提交，追加到原 PR）。
+
+### 2026-11-16 15:29:33 CST (UTC+08:00) — 状态栏弹窗置前与外部点击收起
+
+- 版本：`0.3.4`（Build `34`），由 `scripts/sync_version.sh` 同步。
+- 完成内容：点击状态栏图标打开弹窗时激活应用，将弹窗提升到状态栏窗口层级并置前；监听应用内外的鼠标点击，在点击弹窗外或应用失去激活状态时收起。保留弹窗内部及附属窗口交互、图标再次点击切换，并在关闭和销毁时移除监听。
+- 主要文件：`Sources/CodexUsageAlert/MenuBarUsageController.swift`、`Resources/Info.plist`、`CHANGELOG.md`、本日志。
+- 验证：`swiftc -frontend -parse`、依赖模块生成及应用全量 `swiftc -swift-version 5 -typecheck`、`git diff --check` 通过；类型检查仅报告原有 `CodexUsageAlertApp.swift:588` 的 `onChange` 弃用警告。未运行自动测试、应用构建、打包、安装或交互验收。
+- 待 Kingway 手测：其他应用位于前台时点击状态栏图标，弹窗应在最前；点击桌面空白、其他应用或本应用主窗口应收起；内部按钮与设置仍可操作，再次点击图标可收起，多次展开／关闭后行为一致。
+- 分支：`codex/fix-status-popover`；提交：pending commit（本记录与实现一并提交）。
+
 ### 2026-11-04 15:19:28 CST (UTC+08:00) — 修复 GUI 启动后的 Codex 用量读取
 
 - 版本：`0.3.3`（Build `33`），由 `scripts/sync_version.sh` 同步，源码、Release 包及安装版 plist 一致。

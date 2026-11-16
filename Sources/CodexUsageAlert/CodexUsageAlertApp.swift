@@ -25,7 +25,6 @@ struct CodexUsageAlertApp: App {
         WindowGroup("用量预警", id: "dashboard") {
             UsagePopover(monitor: monitor)
         }
-        .defaultSize(width: 380, height: 620)
         .windowResizability(.contentSize)
 
     }
@@ -96,11 +95,20 @@ private enum DashboardStyle {
     static let mint = Color(red: 0.19, green: 0.86, blue: 0.76)
 }
 
+private struct UsageContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct UsagePopover: View {
     @ObservedObject var monitor: UsageMonitor
     @State private var showingSettings = false
     @State private var selectedService: UsageService = .codex
     @State private var showingTokenDetails = false
+    @State private var contentHeight: CGFloat = 620
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private func percent(for service: UsageService) -> Double? {
@@ -176,6 +184,16 @@ struct UsagePopover: View {
                     footer
                 }
                 .padding(18)
+                .fixedSize(horizontal: false, vertical: true)
+                .background {
+                    GeometryReader { geometry in
+                        Color.clear.preference(key: UsageContentHeightKey.self,
+                                               value: geometry.size.height)
+                    }
+                }
+            }
+            .onPreferenceChange(UsageContentHeightKey.self) { height in
+                if height > 0 { contentHeight = ceil(height) }
             }
             .foregroundStyle(.white)
             .accessibilityHidden(showingSettings)
@@ -188,7 +206,9 @@ struct UsagePopover: View {
                     .transition(.opacity)
             }
         }
-        .frame(width: 380, height: min(620, (NSScreen.main?.visibleFrame.height ?? 860) - 80))
+        // Fit the full content, reserving space for window chrome and the popover arrow.
+        // Scrolling is only needed when the content exceeds the available screen height.
+        .frame(width: 380, height: min(contentHeight, max(1, (NSScreen.main?.visibleFrame.height ?? 860) - 40)))
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showingSettings)

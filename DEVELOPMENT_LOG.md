@@ -9,6 +9,15 @@
 
 ## 进行中版本
 
+### 2026-11-16 15:35:13 CST (UTC+08:00) — 按内容高度完整展示用量窗口
+
+- 版本：`0.3.5`（Build `35`），由 `scripts/sync_version.sh` 同步。
+- 完成内容：取消主界面固定 620 点的高度上限和窗口默认高度，测量内容的自然高度并同步调整主窗口与状态栏弹窗；切换服务、展开 Token 详情或出现多行提示时重新计算。仅当内容超过屏幕可用高度（预留 40 点窗口装饰空间）时保留滚动。
+- 主要文件：`Sources/CodexUsageAlert/CodexUsageAlertApp.swift`、`MenuBarUsageController.swift`、版本及两份日志。
+- 验证：应用全量 `swiftc -swift-version 5 -typecheck -I .build/popover-check Sources/CodexUsageAlert/*.swift`、plist 校验和 `git diff --check` 通过；仍只有既有 `onChange` 弃用警告。复核 SwiftUI 内容测量、首选内容尺寸同步及版本差异。未运行自动测试、应用构建、打包、安装或交互验收。
+- 待 Kingway 手测：打开主窗口及状态栏弹窗，屏幕放得下时应一次看到页脚；切换 Codex/Grok、展开与收起 Token 详情后窗口高度应跟随变化，无需滚动；内容超出小屏幕可用高度时仍可滚动访问底部。
+- 分支：`codex/fix-status-popover`；提交：pending commit（与实现一并提交，追加到原 PR）。
+
 ### 2026-11-16 15:29:33 CST (UTC+08:00) — 状态栏弹窗置前与外部点击收起
 
 - 版本：`0.3.4`（Build `34`），由 `scripts/sync_version.sh` 同步。

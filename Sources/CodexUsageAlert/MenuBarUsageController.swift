@@ -18,7 +18,9 @@ final class MenuBarUsageController: NSObject, NSPopoverDelegate {
         statusItem.autosaveName = "Item-0"
         popover.behavior = .transient
         popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: UsagePopover(monitor: monitor))
+        let contentController = NSHostingController(rootView: UsagePopover(monitor: monitor))
+        contentController.sizingOptions.insert(.preferredContentSize)
+        popover.contentViewController = contentController
         NotificationCenter.default.addObserver(self, selector: #selector(closePopover),
             name: NSApplication.didResignActiveNotification, object: NSApp)
         if let button = statusItem.button {
